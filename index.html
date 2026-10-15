@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shardfall</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font-family: system-ui, sans-serif; }
+  #hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 14px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #hpbar { width: 220px; height: 12px; background: #400; border: 1px solid #fff; margin: 6px 0; }
+  #hp { height: 100%; width: 100%; background: #e33; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="hud">
+    <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
+    <div>WASD / Panah: gerak &middot; Spasi / Klik: serang</div>
+    <div id="hpbar"><div id="hp"></div></div>
+    <div id="info"></div>
+  </div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
