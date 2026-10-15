@@ -42,14 +42,15 @@ scene.add(new THREE.GridHelper(80, 40, 0x444a5a, 0x333846));
 const loader = new GLTFLoader();
 const load = (file) => loader.loadAsync('assets/' + file);
 
-let knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, swordGltf, bladeGltf;
+let knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, meleeGltf, swordGltf, bladeGltf;
 try {
-  [knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, swordGltf, bladeGltf] = await Promise.all([
+  [knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, meleeGltf, swordGltf, bladeGltf] = await Promise.all([
     load('Knight.glb'),
     load('Skeleton_Minion.glb'),
     load('Skeleton_Warrior.glb'),
     load('Rig_Medium_General.glb'),
     load('Rig_Medium_MovementBasic.glb'),
+    load('Rig_Medium_CombatMelee.glb'),
     load('sword_1handed.gltf'),
     load('Skeleton_Blade.gltf'),
   ]);
@@ -60,7 +61,7 @@ try {
 }
 
 // Semua karakter KayKit memakai rig yang sama (Rig_Medium), jadi animasinya dibagi bersama.
-const clips = [...generalGltf.animations, ...moveGltf.animations];
+const clips = [...generalGltf.animations, ...moveGltf.animations, ...meleeGltf.animations];
 
 function prepareModel(root) {
   root.traverse((o) => {
@@ -79,11 +80,12 @@ function makeActor(model) {
   return { mixer, actions, current: null, lock: 0 };
 }
 
-function play(actor, name, { fade = 0.15, once = false, force = false } = {}) {
+function play(actor, name, { fade = 0.15, once = false, force = false, timeScale = 1 } = {}) {
   const next = actor.actions[name];
   if (!next || (actor.current === next && !force)) return;
   next.reset();
   next.setEffectiveWeight(1);
+  next.setEffectiveTimeScale(timeScale);
   if (once) {
     next.setLoop(THREE.LoopOnce, 1);
     next.clampWhenFinished = true;
@@ -97,10 +99,10 @@ function play(actor, name, { fade = 0.15, once = false, force = false } = {}) {
 }
 
 // Mainkan animasi sekali (hit/mati). hold=true menahan pose terakhir selamanya.
-function playOnce(actor, name, { hold = false, maxLock = Infinity } = {}) {
+function playOnce(actor, name, { hold = false, maxLock = Infinity, timeScale = 1 } = {}) {
   const clip = actor.actions[name]?.getClip();
-  play(actor, name, { once: true, force: true, fade: 0.08 });
-  actor.lock = hold ? Infinity : Math.min(clip ? clip.duration : 0.4, maxLock);
+  play(actor, name, { once: true, force: true, fade: 0.08, timeScale });
+  actor.lock = hold ? Infinity : Math.min(clip ? clip.duration / timeScale : 0.4, maxLock);
 }
 
 function updateActor(actor, dt) {
@@ -137,6 +139,10 @@ const state = {
   attackCooldown: 0,
   swinging: false,
   swingT: 0,
+  strikeIn: 0,
+  slashT: 0,
+  combo: 0,
+  lastAttackAt: 0,
   kills: 0,
 };
 
@@ -237,11 +243,28 @@ function damageEnemy(en, dir) {
   }
 }
 
+// Kombo 3 tebasan (animasi KayKit Combat Melee, pedang satu tangan)
+const COMBO = [
+  'Melee_1H_Attack_Slice_Horizontal',
+  'Melee_1H_Attack_Chop',
+  'Melee_1H_Attack_Slice_Diagonal',
+];
+// Atur ini kalau momen kena pukul terasa terlalu cepat/lambat dibanding ayunan pedang
+const ATTACK_ANIM_SPEED = 2; // kecepatan animasi serangan (1 = asli)
+const STRIKE_DELAY = 0.14; // detik dari mulai animasi sampai damage jatuh
+
 function attack() {
   if (state.attackCooldown > 0) return;
   state.attackCooldown = 0.5;
   state.swinging = true;
   state.swingT = 0;
+
+  // Kombo kembali ke awal kalau jeda antar serangan lebih dari 1 detik
+  const now = performance.now();
+  if (now - state.lastAttackAt > 1000) state.combo = 0;
+  state.lastAttackAt = now;
+  playOnce(playerActor, COMBO[state.combo % COMBO.length], { maxLock: 0.5, timeScale: ATTACK_ANIM_SPEED });
+  state.combo++;
 
   // Auto-aim ke musuh terdekat dalam jangkauan
   let nearest = null;
@@ -261,6 +284,12 @@ function attack() {
     );
   }
 
+  // Damage jatuh sedikit setelah animasi mulai, pas pedang mengayun
+  state.strikeIn = STRIKE_DELAY;
+}
+
+function applyStrike() {
+  state.slashT = 1;
   const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
   for (const en of enemies) {
     if (en.dead) continue;
@@ -297,7 +326,9 @@ function tick() {
     const moving = dir.lengthSq() > 0;
     if (moving) {
       dir.normalize();
-      player.position.addScaledVector(dir, state.speed * dt);
+      // Lebih lambat saat sedang menyerang atau terkena pukulan
+      const speed = playerActor.lock > 0 ? state.speed * 0.5 : state.speed;
+      player.position.addScaledVector(dir, speed * dt);
       const targetYaw = Math.atan2(dir.x, dir.z);
       player.rotation.y = lerpAngle(player.rotation.y, targetYaw, 1 - Math.exp(-18 * dt));
     }
@@ -306,20 +337,20 @@ function tick() {
     state.attackCooldown = Math.max(0, state.attackCooldown - dt);
     if (keys.has('Space') || keys.has('Attack')) attack();
 
-    // Ayunan: putar badan, maju sedikit, kilatan tebasan
+    // Damage jatuh di tengah animasi, lalu pemain maju sedikit saat menebas
+    if (state.strikeIn > 0) {
+      state.strikeIn -= dt;
+      if (state.strikeIn <= 0) applyStrike();
+    }
     if (state.swinging) {
       state.swingT += dt / 0.3;
       const t = Math.min(state.swingT, 1);
-      playerModel.rotation.y = -Math.sin(t * Math.PI) * 1.0;
       const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
-      player.position.addScaledVector(facing, 5 * (1 - t) * dt);
-      slash.material.opacity = 0.8 * (1 - t);
-      if (state.swingT >= 1) {
-        state.swinging = false;
-        playerModel.rotation.y = 0;
-        slash.material.opacity = 0;
-      }
+      player.position.addScaledVector(facing, 4 * (1 - t) * dt);
+      if (state.swingT >= 1) state.swinging = false;
     }
+    state.slashT = Math.max(0, state.slashT - dt / 0.18);
+    slash.material.opacity = 0.7 * state.slashT;
 
     if (playerActor.lock <= 0) play(playerActor, moving ? 'Running_A' : 'Idle_A');
   }
