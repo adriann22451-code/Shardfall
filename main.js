@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { buildVillage, NPCS, VILLAGE_NAME } from './village.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
@@ -23,30 +24,50 @@ renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
 
-scene.add(new THREE.HemisphereLight(0xaabbff, 0x332211, 0.9));
+const hemi = new THREE.HemisphereLight(0xaabbff, 0x332211, 0.9);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-sun.position.set(10, 20, 8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -30;
-sun.shadow.camera.right = 30;
-sun.shadow.camera.top = 30;
-sun.shadow.camera.bottom = -30;
+sun.shadow.camera.left = -28;
+sun.shadow.camera.right = 28;
+sun.shadow.camera.top = 28;
+sun.shadow.camera.bottom = -28;
+sun.shadow.camera.far = 80;
+sun.shadow.bias = -0.0005;
 scene.add(sun);
+scene.add(sun.target);
+const SUN_OFFSET = new THREE.Vector3(10, 20, 8);
 
+// Arena dungeon (lantai gelap + grid); desa punya tanahnya sendiri
+const arenaGroup = new THREE.Group();
+scene.add(arenaGroup);
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(80, 80),
   new THREE.MeshStandardMaterial({ color: 0x2b2f3a })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
-scene.add(ground);
-scene.add(new THREE.GridHelper(80, 40, 0x444a5a, 0x333846));
+arenaGroup.add(ground);
+arenaGroup.add(new THREE.GridHelper(80, 40, 0x444a5a, 0x333846));
+
+// Portal kembali ke desa (di ujung arena)
+const ARENA_PORTAL = { x: 0, z: 34, r: 1.8 };
+const arenaPortal = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.6, 1.6, 3.2, 24, 1, true),
+  new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+arenaPortal.position.set(ARENA_PORTAL.x, 1.6, ARENA_PORTAL.z);
+arenaGroup.add(arenaPortal);
+const arenaPortalLight = new THREE.PointLight(0xffd36b, 2, 12, 1.6);
+arenaPortalLight.position.set(ARENA_PORTAL.x, 2, ARENA_PORTAL.z);
+arenaGroup.add(arenaPortalLight);
 
 // ---------- Muat aset (KayKit, CC0) ----------
 const loader = new GLTFLoader();
 const load = (file) => loader.loadAsync('assets/' + file);
 
+let village;
 let knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, moveAdvGltf, meleeGltf, swordGltf, bladeGltf;
 try {
   [knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, moveAdvGltf, meleeGltf, swordGltf, bladeGltf] =
@@ -66,6 +87,15 @@ try {
   infoEl.textContent = 'Gagal memuat aset. Buka lewat server lokal dan pastikan folder assets/ ada di samping index.html.';
   throw err;
 }
+
+try {
+  village = await buildVillage((n, total) => (infoEl.textContent = `Memuat desa... ${n}/${total}`));
+} catch (err) {
+  console.error(err);
+  infoEl.textContent = 'Gagal memuat aset desa (folder assets/village/).';
+  throw err;
+}
+scene.add(village.group);
 
 // Semua karakter KayKit memakai rig yang sama (Rig_Medium), jadi animasinya dibagi bersama.
 const clips = [
@@ -226,10 +256,136 @@ function spawnEnemy() {
     deadTimer: 0,
   });
 }
-for (let i = 0; i < 6; i++) spawnEnemy();
 setInterval(() => {
-  if (enemies.filter((e) => !e.dead).length < 12) spawnEnemy();
+  if (zone === 'arena' && enemies.filter((e) => !e.dead).length < 12) spawnEnemy();
 }, 3000);
+
+// ---------- Warga desa ----------
+const npcs = [];
+function makeLabel(text) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d');
+  g.font = 'bold 30px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineWidth = 6;
+  g.strokeStyle = 'rgba(0,0,0,.85)';
+  g.strokeText(text, 128, 32);
+  g.fillStyle = '#ffe9a8';
+  g.fillText(text, 128, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(2.6, 0.65, 1);
+  sp.position.y = 2.7;
+  sp.renderOrder = 10;
+  return sp;
+}
+for (const def of NPCS) {
+  const model = SkeletonUtils.clone(knightGltf.scene);
+  prepareModel(model);
+  const root = new THREE.Group();
+  root.add(model);
+  root.position.set(def.x, 0, def.z);
+  root.rotation.y = def.face;
+  root.add(makeLabel(def.name));
+  village.group.add(root);
+  const actor = makeActor(model);
+  play(actor, 'Idle_A', { fade: 0 });
+  actor.mixer.update(Math.random() * 2);
+  npcs.push({ def, root, actor });
+  village.colliders.push({ x0: def.x - 0.5, x1: def.x + 0.5, z0: def.z - 0.5, z1: def.z + 0.5 });
+}
+
+// Dialog: tombol Bicara / F untuk mulai dan lanjut
+const talkBtn = document.getElementById('btnTalk');
+const dialogEl = document.getElementById('dialog');
+const dialogName = document.getElementById('dialogName');
+const dialogText = document.getElementById('dialogText');
+let talk = null; // { npc, i }
+
+function nearestNpc(range) {
+  let best = null;
+  let bd = range;
+  for (const n of npcs) {
+    const d = Math.hypot(n.root.position.x - player.position.x, n.root.position.z - player.position.z);
+    if (d < bd) {
+      bd = d;
+      best = n;
+    }
+  }
+  return best;
+}
+function showLine() {
+  dialogName.textContent = talk.npc.def.name;
+  dialogText.textContent = talk.npc.def.lines[talk.i];
+  dialogEl.style.display = 'block';
+}
+function closeDialog() {
+  talk = null;
+  dialogEl.style.display = 'none';
+}
+function interact() {
+  if (zone !== 'village' || state.hp <= 0) return;
+  if (talk) {
+    talk.i++;
+    if (talk.i >= talk.npc.def.lines.length) closeDialog();
+    else showLine();
+    return;
+  }
+  const n = nearestNpc(3.2);
+  if (!n) return;
+  talk = { npc: n, i: 0 };
+  // NPC menoleh ke pemain
+  n.root.rotation.y = Math.atan2(player.position.x - n.root.position.x, player.position.z - n.root.position.z);
+  showLine();
+}
+talkBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  interact();
+});
+dialogEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  interact();
+});
+
+// ---------- Zona: desa (aman) dan arena dungeon ----------
+let zone = 'village';
+const ZONES = {
+  village: { bg: 0x7b8fb5, fogNear: 50, fogFar: 120, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
+  arena: { bg: 0x14161c, fogNear: 25, fogFar: 60, sky: 0xaabbff, ground: 0x332211, hemi: 0.9, sunColor: 0xffffff, sun: 1.3 },
+};
+function setZone(name) {
+  zone = name;
+  const z = ZONES[name];
+  scene.background.setHex(z.bg);
+  scene.fog.color.setHex(z.bg);
+  scene.fog.near = z.fogNear;
+  scene.fog.far = z.fogFar;
+  hemi.color.setHex(z.sky);
+  hemi.groundColor.setHex(z.ground);
+  hemi.intensity = z.hemi;
+  sun.color.setHex(z.sunColor);
+  sun.intensity = z.sun;
+  village.group.visible = name === 'village';
+  arenaGroup.visible = name === 'arena';
+
+  for (const e of enemies) scene.remove(e.root);
+  enemies.length = 0;
+  closeDialog();
+  strikes.length = 0;
+  state.dash = null;
+
+  const sp = name === 'village' ? (setZone.fromArena ? { x: 0, z: 29 } : village.spawn) : { x: 0, z: -30 };
+  setZone.fromArena = false;
+  player.position.set(sp.x, 0, sp.z);
+  player.rotation.y = 0;
+  camYaw = Math.PI;
+  camera.position.set(sp.x, 7, sp.z - 9);
+  if (name === 'arena') for (let i = 0; i < 6; i++) spawnEnemy();
+}
 
 // ---------- Kamera orbit (di belakang karakter, bisa diputar dan di-zoom) ----------
 let camYaw = Math.PI; // kamera di belakang pemain yang awalnya menghadap +Z
@@ -256,6 +412,7 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (e.repeat) return;
+  if (e.code === 'KeyF') interact();
   if (e.code === 'Digit1') useSkill('s1');
   if (e.code === 'Digit2') useSkill('s2');
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') useSkill('dodge');
@@ -482,6 +639,7 @@ const ATTACK_ANIM_SPEED = 2; // kecepatan animasi serangan (1 = asli)
 const STRIKE_DELAY = 0.14; // detik dari mulai animasi sampai damage jatuh
 
 function attack() {
+  if (talk) return;
   if (state.hp <= 0 || state.attackCooldown > 0 || state.skillLock > 0 || state.dash) return;
   state.attackCooldown = 0.5;
   state.lunge = 0.3;
@@ -561,12 +719,41 @@ function damagePlayer(amount) {
   }
 }
 
+// Dorong pemain keluar dari bangunan / pagar / kristal (lingkaran vs kotak)
+function collidePlayer(r = 0.5) {
+  const pos = player.position;
+  for (const c of village.colliders) {
+    const cx = clamp(pos.x, c.x0, c.x1);
+    const cz = clamp(pos.z, c.z0, c.z1);
+    const dx = pos.x - cx;
+    const dz = pos.z - cz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= r * r) continue;
+    if (d2 > 1e-8) {
+      const d = Math.sqrt(d2);
+      pos.x = cx + (dx / d) * r;
+      pos.z = cz + (dz / d) * r;
+    } else {
+      const l = pos.x - c.x0, rt = c.x1 - pos.x, t = pos.z - c.z0, b = c.z1 - pos.z;
+      const m = Math.min(l, rt, t, b);
+      if (m === l) pos.x = c.x0 - r;
+      else if (m === rt) pos.x = c.x1 + r;
+      else if (m === t) pos.z = c.z0 - r;
+      else pos.z = c.z1 + r;
+    }
+  }
+}
+
 // ---------- HUD ----------
 function updateHud() {
   hpEl.style.width = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
-  infoEl.textContent = state.hp > 0
-    ? `Kill: ${state.kills}`
-    : `Kamu kalah! Kill: ${state.kills} — refresh untuk main lagi`;
+  const near = zone === 'village' && !talk ? nearestNpc(3.2) : null;
+  talkBtn.style.display = near ? 'flex' : 'none';
+  infoEl.textContent = state.hp <= 0
+    ? `Kamu kalah! Kill: ${state.kills} — refresh untuk main lagi`
+    : zone === 'village'
+      ? `${VILLAGE_NAME} — gerbang di utara menuju Hutan Akar`
+      : `Dungeon — Kill: ${state.kills} · portal emas di ujung = kembali ke desa`;
   updateSkillUi();
 }
 
@@ -613,6 +800,7 @@ function tick() {
     }
     player.position.x = clamp(player.position.x, -ARENA, ARENA);
     player.position.z = clamp(player.position.z, -ARENA, ARENA);
+    if (zone === 'village') collidePlayer();
 
     // Serang
     if (keys.has('Space') || keys.has('KeyJ') || keys.has('Attack') || keys.has('AttackBtn')) attack();
@@ -671,9 +859,30 @@ function tick() {
     }
   }
 
+  // Pindah zona lewat gerbang / portal
+  if (alive) {
+    if (zone === 'village' && Math.hypot(player.position.x - village.gate.x, player.position.z - village.gate.z) < village.gate.r) {
+      setZone('arena');
+    } else if (zone === 'arena' && Math.hypot(player.position.x - ARENA_PORTAL.x, player.position.z - ARENA_PORTAL.z) < ARENA_PORTAL.r) {
+      setZone.fromArena = true;
+      setZone('village');
+    }
+  }
+  if (zone === 'village') {
+    village.update(clock.elapsedTime);
+    for (const n of npcs) updateActor(n.actor, dt);
+    if (talk && Math.hypot(talk.npc.root.position.x - player.position.x, talk.npc.root.position.z - player.position.z) > 5.5) closeDialog();
+  } else {
+    arenaPortal.rotation.y += dt;
+    arenaPortalLight.intensity = 2 + Math.sin(clock.elapsedTime * 3) * 0.5;
+  }
+  sun.target.position.copy(player.position);
+  sun.position.copy(player.position).add(SUN_OFFSET);
+
   updateCamera(dt);
   updateHud();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
+setZone('village'); // zona awal
 tick();

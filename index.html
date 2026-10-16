@@ -35,6 +35,14 @@
   #btnS1 { right: 122px; bottom: 34px; width: 60px; height: 60px; }
   #btnS2 { right: 112px; bottom: 118px; width: 60px; height: 60px; }
   #btnDodge { right: 28px; bottom: 126px; width: 60px; height: 60px; }
+  #btnTalk { right: 24px; bottom: 210px; width: 72px; height: 72px; background: rgba(60,120,80,.75); display: none; }
+
+  #dialog { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
+    box-sizing: border-box; padding: 12px 16px 10px; border-radius: 10px; border: 2px solid rgba(255,233,168,.7);
+    background: rgba(15,18,30,.88); color: #fff; display: none; z-index: 5; touch-action: none; }
+  #dialogName { font-weight: 700; color: #ffe9a8; margin-bottom: 4px; }
+  #dialogText { font-size: 15px; line-height: 1.45; }
+  #dialogHint { margin-top: 6px; font-size: 11px; opacity: .6; text-align: right; }
 </style>
 <script type="importmap">
 {
@@ -50,7 +58,7 @@
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
     <div id="hpbar"><div id="hp"></div></div>
     <div id="info"></div>
-    <div id="help">WASD / joystick: jalan &middot; Spasi / klik: serang &middot; 1, 2: skill &middot; Shift: hindar<br>Klik kanan + geser, geser layar, atau Q/E: putar kamera &middot; Roda mouse / cubit: zoom</div>
+    <div id="help">WASD / joystick: jalan &middot; Spasi / klik: serang &middot; 1, 2: skill &middot; Shift: hindar &middot; F: bicara<br>Klik kanan + geser, geser layar, atau Q/E: putar kamera &middot; Roda mouse / cubit: zoom</div>
   </div>
 
   <div id="controls">
@@ -59,8 +67,11 @@
     <div class="btn" id="btnS2">Tusuk<small>2</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnS1">Lompat<small>1</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnDodge">Hindar<small>Shift</small><div class="cd"></div><div class="cdt"></div></div>
+    <div class="btn" id="btnTalk">Bicara<small>F</small></div>
     <div class="btn" id="btnAttack">Serang<small>Spasi</small></div>
   </div>
+
+  <div id="dialog"><div id="dialogName"></div><div id="dialogText"></div><div id="dialogHint">ketuk / F: lanjut</div></div>
 
   <script type="module" src="main.js"></script>
 </body>
