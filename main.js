@@ -301,9 +301,54 @@ function makeLabel(text) {
   sp.renderOrder = 10;
   return sp;
 }
+// Tampilan khusus NPC (mis. kakek: tanpa topi penyihir, rambut dan jenggot putih, sedikit membungkuk)
+function applyLook(model, look) {
+  model.updateMatrixWorld(true);
+  for (const n of look.hide || []) {
+    const o = model.getObjectByName(n);
+    if (o) o.visible = false;
+  }
+  const head = model.getObjectByName('head');
+  const headMesh = look.headMesh && model.getObjectByName(look.headMesh);
+  if (head && headMesh && (look.hair || look.beard)) {
+    const box = new THREE.Box3().setFromObject(headMesh);
+    const c = box.getCenter(new THREE.Vector3());
+    const sz = box.getSize(new THREE.Vector3());
+    const boneQ = head.getWorldQuaternion(new THREE.Quaternion());
+    const inv = boneQ.clone().invert();
+    const ws = head.getWorldScale(new THREE.Vector3()).x || 1;
+    // pasang ke tulang kepala supaya ikut bergerak, tetap tegak seperti pose awal
+    const attach = (mesh, x, y, z, flip = false) => {
+      const local = head.worldToLocal(new THREE.Vector3(x, y, z));
+      mesh.position.copy(local);
+      mesh.quaternion.copy(inv);
+      if (flip) mesh.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI));
+      mesh.scale.setScalar(1 / ws);
+      mesh.castShadow = true;
+      head.add(mesh);
+    };
+    if (look.hair) {
+      const mat = new THREE.MeshStandardMaterial({ color: look.hair, roughness: 0.9 });
+      attach(new THREE.Mesh(new THREE.BoxGeometry(sz.x * 1.08, sz.y * 0.34, sz.z * 1.08), mat), c.x, box.max.y - sz.y * 0.12, c.z);
+      attach(new THREE.Mesh(new THREE.BoxGeometry(sz.x * 1.08, sz.y * 0.75, sz.z * 0.3), mat), c.x, c.y - sz.y * 0.02, box.min.z + sz.z * 0.1);
+      for (const sx of [-1, 1]) {
+        attach(new THREE.Mesh(new THREE.BoxGeometry(sz.x * 0.12, sz.y * 0.55, sz.z * 0.6), mat), c.x + sx * sz.x * 0.5, c.y + sz.y * 0.05, c.z - sz.z * 0.1);
+      }
+    }
+    if (look.beard) {
+      const mat = new THREE.MeshStandardMaterial({ color: look.beard, roughness: 0.9 });
+      attach(new THREE.Mesh(new THREE.BoxGeometry(sz.x * 0.82, sz.y * 0.42, sz.z * 0.22), mat), c.x, box.min.y + sz.y * 0.2, box.max.z - sz.z * 0.04);
+      attach(new THREE.Mesh(new THREE.ConeGeometry(sz.x * 0.3, sz.y * 0.5, 4), mat), c.x, box.min.y - sz.y * 0.08, box.max.z - sz.z * 0.12, true);
+    }
+  }
+  if (look.scale) model.scale.multiplyScalar(look.scale);
+  if (look.lean) model.rotation.x = look.lean;
+}
+
 for (const def of NPCS) {
   const model = SkeletonUtils.clone(npcGltf[def.model].scene);
   prepareModel(model);
+  if (def.look) applyLook(model, def.look);
   for (const [hand, item] of Object.entries(def.items || {})) {
     const slot = model.getObjectByName('handslot.' + hand);
     const src = itemGltf[item];

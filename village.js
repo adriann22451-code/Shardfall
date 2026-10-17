@@ -28,6 +28,7 @@ export const NPCS = [
     id: 'elder',
     name: 'Tetua Desa',
     model: 'Mage', items: { r: 'staff' },
+    look: { headMesh: 'Mage_Head', hide: ['Mage_Hat'], hair: 0xe9e9ef, beard: 0xf4f4f4, lean: 0.12, scale: 0.93 },
     x: -5, z: -5, face: Math.PI / 4,
     lines: [
       'Kau lihat kristal itu? Dulu ia berdenyut tenang. Sekarang retaknya melebar setiap malam.',
@@ -49,10 +50,19 @@ export const NPCS = [
     id: 'guard',
     name: 'Penjaga Gerbang',
     model: 'Ranger', items: { r: 'sword_1handed', l: 'shield_round' },
-    x: -3.5, z: 30.5, face: 0.6,
+    x: -3.6, z: 31.5, face: Math.PI,
     lines: [
       'Gerbang ini menuju Hutan Akar, wilayah pertama. Penjaganya bernama Penjaga Akar.',
       'Dulu ia petani yang menanam di tepi hutan. Jangan ragu saat melawannya.',
+    ],
+  },
+  {
+    id: 'guard2',
+    name: 'Penjaga Gerbang',
+    model: 'Rogue', items: { r: 'sword_1handed', l: 'shield_round' },
+    x: 3.6, z: 31.5, face: Math.PI,
+    lines: [
+      'Kami berdua berjaga sejak retakan pertama muncul. Belum pernah ada yang kembali dari dalam tanpa luka.',
       'Kembalilah hidup-hidup. Desa ini tidak sanggup kehilangan satu orang lagi.',
     ],
   },
