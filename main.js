@@ -1664,17 +1664,41 @@ function collidePos(pos, r, list) {
 const colliderList = () => (zone === 'village' ? village.colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
 
 // ---------- HUD ----------
+const hpTextEl = document.getElementById('hpText');
+const deathEl = document.getElementById('death');
+const helpEl = document.getElementById('help');
+document.getElementById('btnHelp').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  helpEl.classList.toggle('open');
+});
+document.getElementById('btnRespawn').addEventListener('click', respawn);
+function respawn() {
+  if (state.hp > 0) return;
+  state.hp = state.maxHp;
+  state.invuln = 2;
+  state.buffs.speed = 0;
+  state.buffs.power = 0;
+  state.potionCd = 0;
+  bossBarEl.style.display = 'none';
+  playerActor.lock = 0;
+  play(playerActor, 'Idle_A', { fade: 0.1, force: true });
+  setZone('village', 'start');
+  toast('You wake up in the village...');
+}
 function updateHud() {
   hpEl.style.width = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
+  hpEl.classList.toggle('low', state.hp > 0 && state.hp / state.maxHp < 0.3);
+  hpTextEl.textContent = `${Math.ceil(state.hp)} / ${state.maxHp}`;
+  deathEl.classList.toggle('show', state.hp <= 0);
   const near = zone === 'village' && !talk ? nearestNpc(3.2) : null;
   talkBtn.style.display = near ? 'flex' : 'none';
   infoEl.textContent = state.hp <= 0
-    ? `You were defeated! Kills: ${state.kills} — refresh to play again`
+    ? 'Defeated'
     : zone === 'village'
-      ? `${VILLAGE_NAME} — Shards ${save.shards.length}/4 — the north gate leads to the Root Forest`
+      ? `${VILLAGE_NAME} · Shards ${save.shards.length}/4`
       : zone === 'boss'
-        ? `Root Warden's Lair — Shards ${save.shards.length}/4`
-        : `Dungeon — Kills: ${state.kills} · Shards ${save.shards.length}/4 · gold portal = village · green door (east) = Root Warden`;
+        ? `Root Warden's Lair · Shards ${save.shards.length}/4`
+        : `Dungeon · Kills ${state.kills} · Shards ${save.shards.length}/4`;
   updateSkillUi();
   goldEl.textContent = save.gold;
   const bf = [];

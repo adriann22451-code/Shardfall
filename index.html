@@ -9,10 +9,29 @@
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   canvas { display: block; touch-action: none; }
 
-  #hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 13px; pointer-events: none; text-shadow: 0 1px 2px #000; }
-  #hpbar { width: 220px; height: 12px; background: #400; border: 1px solid #fff; margin: 6px 0; }
-  #hp { height: 100%; width: 100%; background: #e33; }
-  #help { opacity: .75; max-width: 260px; line-height: 1.4; }
+  #hud { position: fixed; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); color: #fff; font-size: 13px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #hpbar { position: relative; width: 200px; height: 18px; margin: 5px 0 4px; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(#1a0508, #2c0a10); border: 2px solid #f1d9a0; box-shadow: 0 0 0 1px #000, 0 2px 6px rgba(0,0,0,.6); }
+  #hp { height: 100%; width: 100%; border-radius: 8px; transition: width .25s ease, filter .25s;
+    background: linear-gradient(#ff7a7a 0%, #e5262e 45%, #a3101a 100%); box-shadow: inset 0 2px 0 rgba(255,255,255,.35); }
+  #hp.low { animation: hpPulse .8s ease-in-out infinite; }
+  @keyframes hpPulse { 50% { filter: brightness(1.6); } }
+  #hpText { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+    letter-spacing: 1px; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+  #info { font-size: 11px; opacity: .85; max-width: 62vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #help { display: none; opacity: .9; max-width: 260px; line-height: 1.4; font-size: 12px; background: rgba(10,12,24,.8);
+    padding: 8px 10px; border-radius: 8px; margin-top: 6px; }
+  #help.open { display: block; }
+  #btnHelp { right: 76px; top: 24px; width: 34px; height: 34px; font-size: 16px; background: rgba(60,70,110,.7); }
+  #death { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: radial-gradient(ellipse at center, rgba(60,0,0,.55), rgba(0,0,0,.88)); color: #fff; opacity: 0; visibility: hidden;
+    transition: opacity 1s ease 1.2s, visibility 0s linear 1.2s; }
+  #death.show { opacity: 1; visibility: visible; }
+  #death h1 { margin: 0; font-size: 40px; letter-spacing: 6px; color: #ff4a4a; text-shadow: 0 0 18px #a00, 0 2px 4px #000; }
+  #death p { margin: 0; opacity: .8; font-size: 14px; }
+  #death button { padding: 14px 28px; border-radius: 12px; border: 2px solid #ffe9a8; background: rgba(60,40,20,.9); color: #ffe9a8;
+    font: 700 16px system-ui, sans-serif; touch-action: manipulation; }
+  #death button:active { background: rgba(110,80,40,.95); }
 
   #controls { position: fixed; inset: 0; pointer-events: none; }
 
@@ -98,8 +117,8 @@
   #buffs { font-size: 13px; font-weight: 700; color: #bff4ff; min-height: 18px; }
   #btnBag { right: 14px; top: 14px; width: 54px; height: 54px; font-size: 12px; background: rgba(60,70,110,.7); }
   #btnQ1, #btnQ2 { width: 52px; height: 52px; background: rgba(110,40,40,.65); }
-  #btnQ1 { right: 192px; bottom: 36px; }
-  #btnQ2 { right: 192px; bottom: 96px; background: rgba(120,50,100,.65); }
+  #btnQ1 { left: 22px; bottom: 176px; }
+  #btnQ2 { left: 84px; bottom: 176px; background: rgba(120,50,100,.65); }
   .qi { font-size: 20px; line-height: 1; }
   #btnQ1 small, #btnQ2 small { font-size: 12px; opacity: .95; }
   .btn.empty { opacity: .45; }
@@ -176,11 +195,11 @@
 
   <div id="hud">
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
-    <div id="hpbar"><div id="hp"></div></div>
+    <div id="hpbar"><div id="hp"></div><div id="hpText"></div></div>
     <div id="goldRow">🪙 <span id="gold">0</span></div>
     <div id="buffs"></div>
     <div id="info"></div>
-    <div id="help">WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
+    <div id="help">Controls:<br>WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
   </div>
 
   <div id="controls">
@@ -189,6 +208,7 @@
     <div class="btn" id="btnS2">Thrust<small>2</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnS1">Leap<small>1</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnDodge">Dodge<small>Shift</small><div class="cd"></div><div class="cdt"></div></div>
+    <div class="btn" id="btnHelp">?</div>
     <div class="btn" id="btnBag">Bag<small>I</small></div>
     <div class="btn" id="btnQ1"><span class="qi">🧪</span><small id="q1c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnQ2"><span class="qi">⚗️</span><small id="q2c">0</small><div class="cd"></div></div>
@@ -197,6 +217,12 @@
   </div>
 
   <div id="pops"></div>
+
+  <div id="death">
+    <h1>YOU DIED</h1>
+    <p id="deathInfo"></p>
+    <button id="btnRespawn">Return to Village</button>
+  </div>
 
   <div id="bag" class="panel"><div class="pbox">
     <div class="phead"><span>Inventory</span><span id="bagGold">🪙 0</span><button id="bagClose">✕</button></div>
