@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.js';
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
+import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
@@ -14,8 +15,8 @@ const loadPct = document.getElementById('loadPct');
 const loadStage = document.getElementById('loadStage');
 const loadTip = document.getElementById('loadTip');
 const BASE_FILES = 9;
-const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size;
-const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT;
+const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size + 1; // +1: kapak dua tangan boss
+const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT;
 let loadDone = 0;
 let loadShown = 0;
 let loadFinished = false;
@@ -69,7 +70,7 @@ for (let i = 0; i < 18; i++) {
 setStage('Loading characters and weapons...');
 
 const TAU = Math.PI * 2;
-const ARENA = 38; // batas lantai (lantai 80x80)
+let ARENA = 38; // batas area main (desa/dungeon 38, sarang boss lebih kecil)
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // ---------- Setup dasar ----------
@@ -116,6 +117,22 @@ const arenaPortalLight = new THREE.PointLight(0xffd36b, 25, 16, 2);
 arenaPortalLight.position.set(ARENA_PORTAL.x, 2, ARENA_PORTAL.z);
 arenaGroup.add(arenaPortalLight);
 
+// Pintu ke sarang Root Warden (dinding timur dungeon)
+const BOSS_PORTAL = { x: 36, z: 0, r: 1.8 };
+const bossPortal = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.6, 1.6, 3.2, 24, 1, true),
+  new THREE.MeshBasicMaterial({ color: 0x6bff7a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+bossPortal.position.set(BOSS_PORTAL.x, 1.6, BOSS_PORTAL.z);
+arenaGroup.add(bossPortal);
+const bossPortalLight = new THREE.PointLight(0x6bff7a, 25, 16, 2);
+bossPortalLight.position.set(BOSS_PORTAL.x - 1, 2, BOSS_PORTAL.z);
+arenaGroup.add(bossPortalLight);
+const bossPortalLabel = makeLabel("Root Warden's Lair");
+bossPortalLabel.position.set(BOSS_PORTAL.x, 4.2, BOSS_PORTAL.z);
+bossPortalLabel.scale.set(4.2, 1.05, 1);
+arenaGroup.add(bossPortalLabel);
+
 // ---------- Muat aset (KayKit, CC0) ----------
 const loader = new GLTFLoader();
 const load = (file) => loader.loadAsync('assets/' + file).then((g) => (bump(), g));
@@ -161,13 +178,25 @@ try {
 }
 arenaGroup.add(dungeon.group);
 
+setStage('Awakening the Root Warden...');
+let bossRoom;
+try {
+  bossRoom = await buildBossRoom(bump);
+} catch (err) {
+  console.error(err);
+  loadError('Failed to load boss room assets.');
+  throw err;
+}
+const bossGroup = bossRoom.group;
+scene.add(bossGroup);
+
 // Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
 setStage('Calling the villagers...');
 const npcGltf = {};
 const itemGltf = {};
 try {
   const models = [...new Set(NPCS.map((n) => n.model))];
-  const items = [...new Set(NPCS.flatMap((n) => Object.values(n.items || {})))];
+  const items = [...new Set([...NPCS.flatMap((n) => Object.values(n.items || {})), 'axe_2handed'])];
   await Promise.all([
     ...models.map(async (n) => (npcGltf[n] = await load(n + '.glb'))),
     ...items.map(async (n) => (itemGltf[n] = n === 'sword_1handed' ? swordGltf : await load(n + '.gltf'))),
@@ -491,9 +520,19 @@ let zone = 'village';
 const ZONES = {
   village: { bg: 0x7b8fb5, fogNear: 50, fogFar: 120, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
   arena: { bg: 0x0d0e14, fogNear: 30, fogFar: 85, sky: 0x8fa0d8, ground: 0x2a1c14, hemi: 0.7, sunColor: 0x9fb4ff, sun: 0.6 },
+  boss: { bg: 0x07100a, fogNear: 22, fogFar: 70, sky: 0x9fe0a8, ground: 0x1a2a14, hemi: 0.6, sunColor: 0xb0ffc8, sun: 0.35 },
 };
-function setZone(name) {
+// Titik muncul: 'zona tujuan:asal'
+const SPAWNS = {
+  'village:start': { x: 0, z: -30, rot: 0 },
+  'village:arena': { x: 0, z: 29, rot: Math.PI },
+  'arena:village': { x: 0, z: -30, rot: 0 },
+  'arena:boss': { x: 32, z: 0, rot: -Math.PI / 2 },
+  'boss:arena': { x: 0, z: -14, rot: 0 },
+};
+function setZone(name, from = 'start') {
   zone = name;
+  ARENA = name === 'boss' ? BOSS_PLAY : 38;
   const z = ZONES[name];
   scene.background.setHex(z.bg);
   scene.fog.color.setHex(z.bg);
@@ -506,26 +545,30 @@ function setZone(name) {
   sun.intensity = z.sun;
   village.group.visible = name === 'village';
   arenaGroup.visible = name === 'arena';
+  bossGroup.visible = name === 'boss';
 
-  for (const e of enemies) scene.remove(e.root);
+  for (const e of enemies) e.root.parent?.remove(e.root);
   enemies.length = 0;
+  clearBossFx();
   closeDialog();
   strikes.length = 0;
   state.dash = null;
 
-  const sp = name === 'village' ? (setZone.fromArena ? { x: 0, z: 29 } : village.spawn) : { x: 0, z: -30 };
-  setZone.fromArena = false;
+  const sp = SPAWNS[name + ':' + from] || SPAWNS['village:start'];
   player.position.set(sp.x, 0, sp.z);
-  player.rotation.y = 0;
-  camYaw = Math.PI;
-  camera.position.set(sp.x, 7, sp.z - 9);
+  player.rotation.y = sp.rot;
+  camYaw = sp.rot + Math.PI;
+  camera.position.set(sp.x + Math.sin(camYaw) * 8, 6, sp.z + Math.cos(camYaw) * 8);
+  if (name === 'village' && state.hp > 0) state.hp = state.maxHp; // desa = tempat pulih
   if (name === 'arena') for (let i = 0; i < 6; i++) spawnEnemy();
+  if (name === 'boss') spawnBoss();
 }
 
 // ---------- Kamera orbit (di belakang karakter, bisa diputar dan di-zoom) ----------
 let camYaw = Math.PI; // kamera di belakang pemain yang awalnya menghadap +Z
 let camPitch = 0.5;
 let camDist = 9;
+let shake = 0; // getaran kamera (hantaman boss)
 
 function updateCamera(dt) {
   const cp = Math.cos(camPitch);
@@ -535,12 +578,17 @@ function updateCamera(dt) {
     target.y + Math.sin(camPitch) * camDist,
     target.z + Math.cos(camYaw) * cp * camDist
   );
-  if (zone === 'arena') {
+  if (zone !== 'village') {
     // tetap di dalam aula supaya dinding tidak menutupi pandangan
     desired.x = clamp(desired.x, -ARENA - 0.5, ARENA + 0.5);
     desired.z = clamp(desired.z, -ARENA - 0.5, ARENA + 0.5);
   }
   camera.position.lerp(desired, 1 - Math.pow(0.0002, dt));
+  if (shake > 0) {
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake;
+    shake = Math.max(0, shake - dt * 1.4);
+  }
   camera.lookAt(target);
 }
 
@@ -708,7 +756,7 @@ function nearestEnemy(range) {
   let bestDist = range;
   for (const en of enemies) {
     if (en.dead) continue;
-    const d = en.root.position.distanceTo(player.position);
+    const d = en.root.position.distanceTo(player.position) - (en.radius || 0);
     if (d < bestDist) {
       bestDist = d;
       best = en;
@@ -724,6 +772,15 @@ function aimAtNearest(range) {
 }
 
 function damageEnemy(en, dir, dmg = 1, force = 7) {
+  if (en.boss) {
+    // boss tidak terpental / tidak kena stagger
+    if (en.ai.state === 'intro' || en.dead) return;
+    en.hp = Math.max(0, en.hp - dmg);
+    en.flash = 0.12;
+    bossHpEl.style.width = (en.hp / en.maxHp) * 100 + '%';
+    if (en.hp <= 0) killBoss(en);
+    return;
+  }
   en.hp -= dmg;
   en.knock.copy(dir).setY(0).normalize().multiplyScalar(force);
   if (en.hp <= 0) {
@@ -743,7 +800,7 @@ function hitCone(range, minDot, dmg, force) {
     const to = en.root.position.clone().sub(player.position);
     to.y = 0;
     const d = to.length();
-    if (d < range && to.normalize().dot(facing) > minDot) damageEnemy(en, to, dmg, force);
+    if (d < range + (en.radius || 0) && to.normalize().dot(facing) > minDot) damageEnemy(en, to, dmg, force);
   }
 }
 
@@ -752,7 +809,7 @@ function hitCircle(radius, dmg, force) {
     if (en.dead) continue;
     const to = en.root.position.clone().sub(player.position);
     to.y = 0;
-    if (to.length() <= radius) damageEnemy(en, to, dmg, force);
+    if (to.length() <= radius + (en.radius || 0)) damageEnemy(en, to, dmg, force);
   }
 }
 
@@ -764,7 +821,8 @@ function hitLine(length, halfWidth, dmg, force) {
     to.y = 0;
     const along = to.dot(f);
     const side = Math.abs(to.x * f.z - to.z * f.x);
-    if (along > -0.3 && along < length && side < halfWidth) damageEnemy(en, f, dmg, force);
+    const R = en.radius || 0;
+    if (along > -0.3 - R && along < length + R && side < halfWidth + R * 0.7) damageEnemy(en, f, dmg, force);
   }
 }
 
@@ -859,6 +917,383 @@ function damagePlayer(amount) {
   }
 }
 
+// ---------- Boss: Root Warden ----------
+const bossBarEl = document.getElementById('bossBar');
+const bossHpEl = document.getElementById('bossHp');
+const toastEl = document.getElementById('toast');
+let toastTimer = 0;
+function toast(msg, ms = 2800) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+// Kemajuan (pecahan kristal) disimpan di browser
+const SAVE_KEY = 'shardfall_save_v1';
+const save = { shards: [] };
+try {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (raw) Object.assign(save, JSON.parse(raw));
+} catch (e) { /* tanpa penyimpanan juga tidak masalah */ }
+const persist = () => {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+  } catch (e) { /* abaikan */ }
+};
+
+// Portal keluar dari sarang boss
+const BOSS_EXIT = { x: 0, z: -21, r: 1.7 };
+const bossExit = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.5, 1.5, 3, 24, 1, true),
+  new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+bossExit.position.set(BOSS_EXIT.x, 1.5, BOSS_EXIT.z);
+bossGroup.add(bossExit);
+const bossExitLight = new THREE.PointLight(0xffd36b, 22, 14, 2);
+bossExitLight.position.set(BOSS_EXIT.x, 2, BOSS_EXIT.z + 1);
+bossGroup.add(bossExitLight);
+
+const bossFx = new THREE.Group();
+bossGroup.add(bossFx);
+const teles = []; // lingkaran peringatan serangan
+const eruptions = []; // duri akar yang muncul dari tanah
+let shardDrop = null;
+
+const thornGeo = new THREE.ConeGeometry(0.28, 1, 6);
+thornGeo.translate(0, 0.5, 0);
+const thornMat = new THREE.MeshStandardMaterial({ color: 0x5a3a20, emissive: 0x1d5a24, emissiveIntensity: 0.8, roughness: 1 });
+
+function clearBossFx() {
+  for (const t of teles.splice(0)) bossFx.remove(t.g);
+  for (const e of eruptions.splice(0)) bossFx.remove(e.g);
+  if (shardDrop) bossFx.remove(shardDrop.g);
+  shardDrop = null;
+  bossBarEl.style.display = 'none';
+}
+
+function eruption(x, z, r) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  const n = Math.max(5, Math.round(r * 4));
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU;
+    const d = Math.sqrt(Math.random()) * r * 0.9;
+    const m = new THREE.Mesh(thornGeo, thornMat);
+    m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+    m.rotation.set((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4);
+    m.userData.h = 1.4 + Math.random() * 1.6;
+    m.scale.set(1, 0.01, 1);
+    m.castShadow = true;
+    g.add(m);
+  }
+  bossFx.add(g);
+  eruptions.push({ g, t: 0 });
+}
+
+function makeTele(x, z, r, dur, onHit) {
+  const g = new THREE.Group();
+  g.position.set(x, 0.06, z);
+  const base = new THREE.Mesh(
+    new THREE.CircleGeometry(r, 40),
+    new THREE.MeshBasicMaterial({ color: 0xff3b2e, transparent: true, opacity: 0.25, depthWrite: false })
+  );
+  base.rotation.x = -Math.PI / 2;
+  const fill = new THREE.Mesh(
+    new THREE.CircleGeometry(r, 40),
+    new THREE.MeshBasicMaterial({ color: 0xff8a3b, transparent: true, opacity: 0.45, depthWrite: false })
+  );
+  fill.rotation.x = -Math.PI / 2;
+  fill.position.y = 0.01;
+  fill.scale.set(0.01, 0.01, 1);
+  const edge = new THREE.Mesh(
+    new THREE.RingGeometry(r * 0.95, r, 48),
+    new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide })
+  );
+  edge.rotation.x = -Math.PI / 2;
+  edge.position.y = 0.02;
+  g.add(base, fill, edge);
+  bossFx.add(g);
+  teles.push({ g, fill, t: 0, dur, onHit });
+}
+
+// Efek peringatan, duri akar, dan pecahan kristal yang dijatuhkan
+function updateBossFx(dt) {
+  for (let i = teles.length - 1; i >= 0; i--) {
+    const t = teles[i];
+    t.t += dt;
+    const f = Math.min(1, t.t / t.dur);
+    t.fill.scale.set(f, f, 1);
+    if (t.t >= t.dur) {
+      bossFx.remove(t.g);
+      teles.splice(i, 1);
+      t.onHit();
+    }
+  }
+  for (let i = eruptions.length - 1; i >= 0; i--) {
+    const e = eruptions[i];
+    e.t += dt;
+    const s = e.t < 0.1 ? e.t / 0.1 : e.t < 0.6 ? 1 : Math.max(0, 1 - (e.t - 0.6) / 0.3);
+    for (const m of e.g.children) m.scale.y = Math.max(0.01, m.userData.h * s);
+    if (e.t > 0.9) {
+      bossFx.remove(e.g);
+      eruptions.splice(i, 1);
+    }
+  }
+  bossExitLight.intensity = 22 + Math.sin(clock.elapsedTime * 3) * 5;
+  if (shardDrop) {
+    const s = shardDrop;
+    s.t += dt;
+    s.mesh.position.y = 1.4 + Math.sin(s.t * 2.4) * 0.25;
+    s.mesh.rotation.y += dt * 1.6;
+    if (Math.hypot(player.position.x - s.x, player.position.z - s.z) < 2.2) {
+      if (!save.shards.includes('root')) save.shards.push('root');
+      persist();
+      bossFx.remove(s.g);
+      shardDrop = null;
+      toast(`Root Shard obtained! (${save.shards.length}/4) — return to the village`, 4500);
+    }
+  }
+}
+
+function pushOut(pos, center, r) {
+  const dx = pos.x - center.x;
+  const dz = pos.z - center.z;
+  const d = Math.hypot(dx, dz);
+  if (d < r && d > 1e-6) {
+    pos.x = center.x + (dx / d) * r;
+    pos.z = center.z + (dz / d) * r;
+  }
+}
+
+// Pasang mesh ke tulang supaya ikut bergerak; posisi/arah diberikan dalam koordinat model saat pose awal
+function attachToBone(bone, mesh, x, y, z, qWorld) {
+  mesh.position.copy(bone.worldToLocal(new THREE.Vector3(x, y, z)));
+  mesh.quaternion.copy(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+  if (qWorld) mesh.quaternion.multiply(qWorld);
+  mesh.scale.setScalar(1 / (bone.getWorldScale(new THREE.Vector3()).x || 1));
+  bone.add(mesh);
+}
+
+function spawnBoss() {
+  const model = SkeletonUtils.clone(npcGltf.Barbarian.scene);
+  prepareModel(model);
+  const mats = [];
+  model.traverse((o) => {
+    if (o.isMesh) {
+      o.material = o.material.clone();
+      o.material.color.set(0x8fc36a); // nuansa lumut
+      mats.push(o.material);
+    }
+  });
+  const slot = model.getObjectByName('handslot.r');
+  if (slot && itemGltf.axe_2handed) {
+    const ax = SkeletonUtils.clone(itemGltf.axe_2handed.scene);
+    prepareModel(ax);
+    slot.add(ax);
+  }
+  // Duri akar di punggung dan mata hijau menyala
+  model.updateMatrixWorld(true);
+  const chest = model.getObjectByName('chest');
+  if (chest) {
+    for (let i = 0; i < 7; i++) {
+      const th = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.55, 5), thornMat);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.5 - Math.random() * 0.3, 0, (Math.random() - 0.5) * 0.8));
+      attachToBone(chest, th, (i - 3) * 0.1, 1.25 + Math.random() * 0.25, -0.22, q);
+    }
+  }
+  const head = model.getObjectByName('head');
+  const headMesh = model.getObjectByName('Barbarian_Head');
+  if (head && headMesh) {
+    const box = new THREE.Box3().setFromObject(headMesh);
+    const c = box.getCenter(new THREE.Vector3());
+    const sz = box.getSize(new THREE.Vector3());
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x9dff6a });
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(sz.x * 0.14, sz.y * 0.09, 0.02), eyeMat);
+      attachToBone(head, eye, c.x + sx * sz.x * 0.2, c.y + sz.y * 0.05, box.max.z + 0.006);
+    }
+  }
+  model.scale.setScalar(2.4);
+
+  const root = new THREE.Group();
+  root.add(model);
+  root.position.set(0, 0, 10);
+  root.rotation.y = Math.PI;
+  bossGroup.add(root);
+  const actor = makeActor(model);
+  play(actor, 'Idle_A', { fade: 0 });
+  playOnce(actor, 'Spawn_Ground', { maxLock: 2 });
+
+  const boss = {
+    boss: true,
+    root, actor, mats,
+    hp: 45, maxHp: 45,
+    radius: 1.5,
+    speed: 2.6,
+    knock: new THREE.Vector3(),
+    flash: 0,
+    dead: false,
+    deadTimer: 0,
+    ai: { state: 'intro', t: 2.2, cd: 1.2, k: 1, phase2: false, clip: '', lead: 0.5, ts: 1, animDone: false },
+  };
+  enemies.push(boss);
+  bossHpEl.style.width = '100%';
+  bossBarEl.style.display = 'block';
+  toast('The Root Warden awakens!', 2600);
+}
+
+function hitPlayerAt(x, z, r, dmg) {
+  if (Math.hypot(player.position.x - x, player.position.z - z) < r + 0.35) damagePlayer(dmg);
+  eruption(x, z, r * 0.9);
+  shake = Math.max(shake, 0.3);
+}
+
+function bossChooseAttack(en) {
+  const a = en.ai;
+  const k = a.k;
+  const b = en.root.position;
+  const to = new THREE.Vector3(player.position.x - b.x, 0, player.position.z - b.z);
+  const d = to.length();
+  const fwd = to.clone().normalize();
+  const r = Math.random();
+  const kind = d > 6.5 ? 'roots' : r < 0.4 ? 'spin' : r < 0.75 ? 'slam' : 'roots';
+  en.root.rotation.y = Math.atan2(fwd.x, fwd.z);
+  a.state = 'wind';
+  a.animDone = false;
+
+  if (kind === 'slam') {
+    const cx = b.x + fwd.x * 3.4;
+    const cz = b.z + fwd.z * 3.4;
+    a.t = 1.0 * k;
+    makeTele(cx, cz, 3.2, a.t, () => hitPlayerAt(cx, cz, 3.2, 20));
+    Object.assign(a, { clip: 'Melee_2H_Attack_Chop', lead: 0.6, ts: 1.5 });
+  } else if (kind === 'spin') {
+    const cx = b.x;
+    const cz = b.z;
+    a.t = 1.15 * k;
+    makeTele(cx, cz, 5.4, a.t, () => hitPlayerAt(cx, cz, 5.4, 16));
+    Object.assign(a, { clip: 'Melee_2H_Attack_Spin', lead: 0.75, ts: 1.2 });
+  } else {
+    const n = a.phase2 ? 6 : 3;
+    a.t = 1.3 * k;
+    for (let i = 0; i < n; i++) {
+      let x = player.position.x;
+      let z = player.position.z;
+      if (i > 0) {
+        const ang = Math.random() * TAU;
+        const dd = 2.5 + Math.random() * 3;
+        x = clamp(x + Math.cos(ang) * dd, -BOSS_PLAY + 1, BOSS_PLAY - 1);
+        z = clamp(z + Math.sin(ang) * dd, -BOSS_PLAY + 1, BOSS_PLAY - 1);
+      }
+      makeTele(x, z, 1.9, a.t + i * 0.12, () => hitPlayerAt(x, z, 1.9, 12));
+    }
+    Object.assign(a, { clip: 'Melee_2H_Attack_Stab', lead: 0.65, ts: 1.4 });
+  }
+  play(en.actor, 'Melee_2H_Idle');
+}
+
+function updateBoss(en, dt, alive) {
+  const a = en.ai;
+  en.flash = Math.max(0, en.flash - dt);
+  const glow = en.flash > 0 ? 0x663311 : 0x000000;
+  for (const m of en.mats) m.emissive.setHex(glow);
+  if (!alive) {
+    if (en.actor.lock <= 0) play(en.actor, 'Idle_A');
+    return;
+  }
+  const to = player.position.clone().sub(en.root.position);
+  to.y = 0;
+  const d = to.length();
+  const turn = (rate) => {
+    en.root.rotation.y = lerpAngle(en.root.rotation.y, Math.atan2(to.x, to.z), 1 - Math.exp(-rate * dt));
+  };
+  a.t -= dt;
+
+  // Fase 2 saat HP tinggal separuh: lebih cepat, akar lebih banyak
+  if (!a.phase2 && a.state !== 'intro' && en.hp <= en.maxHp * 0.5) {
+    a.phase2 = true;
+    a.k = 0.75;
+    en.speed = 3.4;
+    a.state = 'roar';
+    a.t = 1.6;
+    for (const t of teles.splice(0)) bossFx.remove(t.g);
+    playOnce(en.actor, 'Use_Item', { maxLock: 1.6 });
+    eruption(en.root.position.x, en.root.position.z, 6);
+    shake = 0.5;
+    toast('The Root Warden roars — the roots awaken!', 3000);
+  }
+
+  if (a.state === 'intro') {
+    turn(5);
+    if (a.t <= 0) {
+      a.state = 'chase';
+    }
+  } else if (a.state === 'roar') {
+    if (a.t <= 0) {
+      a.state = 'chase';
+      a.cd = 0.8;
+    }
+  } else if (a.state === 'chase') {
+    turn(6);
+    if (d > 3.8) en.root.position.addScaledVector(to.normalize(), en.speed * dt);
+    if (en.actor.lock <= 0) play(en.actor, d > 3.8 ? 'Walking_B' : 'Idle_A', { timeScale: 0.85 });
+    collidePos(en.root.position, 1.2, bossRoom.colliders);
+    en.root.position.x = clamp(en.root.position.x, -BOSS_PLAY + 1, BOSS_PLAY - 1);
+    en.root.position.z = clamp(en.root.position.z, -BOSS_PLAY + 1, BOSS_PLAY - 1);
+    a.cd -= dt;
+    if (a.cd <= 0) bossChooseAttack(en);
+  } else if (a.state === 'wind') {
+    if (!a.animDone && a.t <= a.lead) {
+      a.animDone = true;
+      playOnce(en.actor, a.clip, { maxLock: 1.3, timeScale: a.ts });
+    }
+    if (a.t <= 0 && teles.length === 0) {
+      a.state = 'recover';
+      a.t = 0.7 * a.k;
+    }
+  } else if (a.state === 'recover') {
+    if (en.actor.lock <= 0) play(en.actor, 'Idle_A');
+    if (a.t <= 0) {
+      a.state = 'chase';
+      a.cd = (a.phase2 ? 0.9 : 1.7) + Math.random() * 0.6;
+    }
+  }
+}
+
+function killBoss(en) {
+  en.dead = true;
+  en.deadTimer = 1e9; // jasad tetap di tempat
+  state.kills++;
+  playOnce(en.actor, 'Death_A', { hold: true });
+  for (const t of teles.splice(0)) bossFx.remove(t.g);
+  bossBarEl.style.display = 'none';
+  eruption(en.root.position.x, en.root.position.z, 5);
+  shake = 0.6;
+  if (save.shards.includes('root')) {
+    toast('Root Warden defeated — the roots fall silent once more.', 4000);
+    return;
+  }
+  toast('Root Warden defeated!', 3500);
+  // pecahan kristal jatuh dan melayang menunggu diambil
+  const g = new THREE.Group();
+  const x = en.root.position.x;
+  const z = en.root.position.z + 3.5;
+  g.position.set(x, 0, z);
+  const mesh = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.6, 0),
+    new THREE.MeshStandardMaterial({ color: 0x9dffb8, emissive: 0x2cff7a, emissiveIntensity: 1.6, roughness: 0.2 })
+  );
+  mesh.scale.set(0.8, 1.6, 0.8);
+  mesh.position.y = 1.4;
+  g.add(mesh);
+  const light = new THREE.PointLight(0x6bff9a, 30, 14, 2);
+  light.position.y = 1.6;
+  g.add(light);
+  bossFx.add(g);
+  shardDrop = { g, mesh, x, z, t: 0 };
+}
+
 // Dorong titik keluar dari bangunan / pagar / kristal (lingkaran vs kotak)
 function collidePos(pos, r, list) {
   for (const c of list) {
@@ -882,7 +1317,7 @@ function collidePos(pos, r, list) {
     }
   }
 }
-const colliderList = () => (zone === 'village' ? village.colliders : dungeon.colliders);
+const colliderList = () => (zone === 'village' ? village.colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
 
 // ---------- HUD ----------
 function updateHud() {
@@ -892,8 +1327,10 @@ function updateHud() {
   infoEl.textContent = state.hp <= 0
     ? `You were defeated! Kills: ${state.kills} — refresh to play again`
     : zone === 'village'
-      ? `${VILLAGE_NAME} — the north gate leads to the Root Forest`
-      : `Dungeon — Kills: ${state.kills} · golden portal at the far end = back to the village`;
+      ? `${VILLAGE_NAME} — Shards ${save.shards.length}/4 — the north gate leads to the Root Forest`
+      : zone === 'boss'
+        ? `Root Warden's Lair — Shards ${save.shards.length}/4`
+        : `Dungeon — Kills: ${state.kills} · Shards ${save.shards.length}/4 · gold portal = village · green door (east) = Root Warden`;
   updateSkillUi();
 }
 
@@ -941,6 +1378,7 @@ function tick() {
     player.position.x = clamp(player.position.x, -ARENA, ARENA);
     player.position.z = clamp(player.position.z, -ARENA, ARENA);
     collidePos(player.position, 0.5, colliderList());
+    for (const e of enemies) if (e.boss && !e.dead) pushOut(player.position, e.root.position, e.radius + 0.5);
 
     // Serang
     if (keys.has('Space') || keys.has('KeyJ') || keys.has('Attack') || keys.has('AttackBtn')) attack();
@@ -968,12 +1406,16 @@ function tick() {
       }
       continue;
     }
+    if (en.boss) {
+      updateBoss(en, dt, alive);
+      continue;
+    }
 
     en.root.position.addScaledVector(en.knock, dt);
     en.knock.multiplyScalar(Math.exp(-8 * dt));
     en.root.position.x = clamp(en.root.position.x, -ARENA, ARENA);
     en.root.position.z = clamp(en.root.position.z, -ARENA, ARENA);
-    collidePos(en.root.position, 0.5, dungeon.colliders);
+    collidePos(en.root.position, 0.5, colliderList());
     en.hitCooldown = Math.max(0, en.hitCooldown - dt);
 
     const stunned = en.actor.lock > 0;
@@ -1003,20 +1445,29 @@ function tick() {
   // Pindah zona lewat gerbang / portal
   if (alive) {
     if (zone === 'village' && Math.hypot(player.position.x - village.gate.x, player.position.z - village.gate.z) < village.gate.r) {
-      setZone('arena');
+      setZone('arena', 'village');
     } else if (zone === 'arena' && Math.hypot(player.position.x - ARENA_PORTAL.x, player.position.z - ARENA_PORTAL.z) < ARENA_PORTAL.r) {
-      setZone.fromArena = true;
-      setZone('village');
+      setZone('village', 'arena');
+    } else if (zone === 'arena' && Math.hypot(player.position.x - BOSS_PORTAL.x, player.position.z - BOSS_PORTAL.z) < BOSS_PORTAL.r) {
+      setZone('boss', 'arena');
+    } else if (zone === 'boss' && Math.hypot(player.position.x - BOSS_EXIT.x, player.position.z - BOSS_EXIT.z) < BOSS_EXIT.r) {
+      setZone('arena', 'boss');
     }
   }
   if (zone === 'village') {
     village.update(clock.elapsedTime);
     for (const n of npcs) updateActor(n.actor, dt);
     if (talk && Math.hypot(talk.npc.root.position.x - player.position.x, talk.npc.root.position.z - player.position.z) > 5.5) closeDialog();
-  } else {
+  } else if (zone === 'arena') {
     arenaPortal.rotation.y += dt;
     arenaPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3) * 6;
+    bossPortal.rotation.y -= dt;
+    bossPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3.7) * 6;
     dungeon.update(clock.elapsedTime);
+  } else {
+    bossRoom.update(clock.elapsedTime, dt);
+    updateBossFx(dt);
+    bossExit.rotation.y += dt;
   }
   sun.target.position.copy(player.position);
   sun.position.copy(player.position).add(SUN_OFFSET);

@@ -105,7 +105,7 @@ export async function buildDungeon(onProgress) {
       const t = -E + k * 4;
       const [x, z] = s.at(t);
       const m = mat4(x, 0, z, s.rot);
-      if (si === 1 && k === 10) doorway.push(m);
+      if ((si === 1 || si === 3) && k === 10) doorway.push(m); // utara: ke desa, timur: sarang boss
       else if (k % 4 === 0) pillars.push(m);
       else plain.push(m);
     }

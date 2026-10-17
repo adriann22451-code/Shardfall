@@ -82,6 +82,16 @@
   #loadTip.swap { opacity: 0; }
   #loading.error #loadBar { background: #e33; box-shadow: 0 0 14px #e33; }
   #loading.error #loadStage { color: #ff8b8b; }
+
+  /* ---------- Boss bar & toast ---------- */
+  #bossBar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); width: min(420px, 56vw); display: none; pointer-events: none; text-align: center; z-index: 4; }
+  #bossName { font-weight: 800; letter-spacing: .2em; font-size: 13px; color: #cfffd0; text-shadow: 0 1px 3px #000; margin-bottom: 4px; }
+  #bossTrack { height: 12px; border-radius: 4px; background: rgba(0,0,0,.55); border: 1px solid rgba(170,255,170,.6); overflow: hidden; }
+  #bossHp { height: 100%; width: 100%; background: linear-gradient(90deg, #2e9d3c, #8be05a); transition: width .15s; }
+  #toast { position: fixed; top: 22%; left: 50%; transform: translate(-50%, -8px); max-width: min(560px, 88vw); padding: 10px 18px; border-radius: 10px;
+    background: rgba(10,16,12,.82); border: 1px solid rgba(190,255,190,.55); color: #e9ffe9; font-weight: 700; text-align: center; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s; z-index: 6; text-shadow: 0 1px 2px #000; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
 </style>
 <script type="importmap">
 {
@@ -115,6 +125,9 @@
     </div>
     <div id="loadTip"></div>
   </div>
+
+  <div id="bossBar"><div id="bossName">ROOT WARDEN</div><div id="bossTrack"><div id="bossHp"></div></div></div>
+  <div id="toast"></div>
 
   <div id="hud">
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
