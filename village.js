@@ -27,6 +27,7 @@ export const NPCS = [
   {
     id: 'elder',
     name: 'Tetua Desa',
+    model: 'Mage', items: { r: 'staff' },
     x: -5, z: -5, face: Math.PI / 4,
     lines: [
       'Kau lihat kristal itu? Dulu ia berdenyut tenang. Sekarang retaknya melebar setiap malam.',
@@ -37,6 +38,7 @@ export const NPCS = [
   {
     id: 'smith',
     name: 'Pandai Besi',
+    model: 'Barbarian', items: { r: 'axe_1handed' },
     x: 8, z: 5, face: -Math.PI / 2,
     lines: [
       'Pedang itu masih bagus. Tapi tulang-tulang di dungeon makin keras tiap hari.',
@@ -46,6 +48,7 @@ export const NPCS = [
   {
     id: 'guard',
     name: 'Penjaga Gerbang',
+    model: 'Ranger', items: { r: 'sword_1handed', l: 'shield_round' },
     x: -3.5, z: 30.5, face: 0.6,
     lines: [
       'Gerbang ini menuju Hutan Akar, wilayah pertama. Penjaganya bernama Penjaga Akar.',
@@ -59,7 +62,7 @@ const WALL_KINDS = ['Straight', 'Door_Round', 'Window_Wide_Round', 'Window_Thin_
 
 function modelNames() {
   const n = new Set([
-    'Corner_Exterior_Wood',
+    'Corner_Exterior_Wood', 'Door_4_Round',
     'Window_Wide_Round1', 'Window_Thin_Round1',
     'WindowShutters_Wide_Round_Open', 'WindowShutters_Thin_Round_Open',
     'Wall_Arch', 'Wall_UnevenBrick_Straight',
@@ -152,6 +155,55 @@ export async function buildVillage(onProgress) {
     }
   }
 
+  // Segitiga penutup bagian depan/belakang atap (di atas dinding), supaya tidak bolong
+  const wallMats = {};
+  const wallMat = (t) => {
+    if (wallMats[t]) return wallMats[t];
+    let found = null;
+    models[`Wall_${t}_Straight`].traverse((o) => {
+      if (!found && o.isMesh) {
+        const arr = Array.isArray(o.material) ? o.material : [o.material];
+        found = arr.find((m) => m.name && m.name.includes(t === 'Plaster' ? 'Plaster' : 'UnevenBrick')) || arr[0];
+      }
+    });
+    wallMats[t] = found.clone();
+    wallMats[t].side = THREE.DoubleSide;
+    return wallMats[t];
+  };
+  function gableFill(house, t, W, D) {
+    const box = new THREE.Box3().setFromObject(models[`Roof_RoundTiles_${W}x${D}`]);
+    const ridge = WALL_H + box.max.y;
+    const eave = WALL_H + box.min.y;
+    const halfRoof = (box.max.x - box.min.x) / 2;
+    const hx = W / 2;
+    const sideY = ridge - ((ridge - eave) * hx) / halfRoof - 0.15;
+    const pts = [
+      [-hx, WALL_H - 0.05],
+      [hx, WALL_H - 0.05],
+      [hx, sideY],
+      [0, ridge - 0.2],
+      [-hx, sideY],
+    ];
+    const pos = [];
+    const uv = [];
+    for (const [x, y] of pts) {
+      pos.push(x, y, 0);
+      uv.push(x / 2 + 0.5, 1 - y / 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4]);
+    geo.computeVertexNormals();
+    const mat = wallMat(t);
+    for (const side of [1, -1]) {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.z = side * (D / 2 - 0.1);
+      m.castShadow = m.receiveShadow = true;
+      house.add(m);
+    }
+  }
+
   // ---------- Rumah ----------
   function buildHouse(h) {
     const W = h.nw * 2;
@@ -176,6 +228,9 @@ export async function buildVillage(onProgress) {
       const ox = (i - (h.nw - 1) / 2) * 2;
       if (i === doorIdx) {
         wall('Door_Round', ox, D / 2, 0);
+        // Daun pintu (ada gagang/engsel logam): engsel di x=0 model, bukaan dinding lebar 1.3
+        const door = put(house, 'Door_4_Round', ox - 0.65, 0, D / 2 - 0.1, 0);
+        if (door) door.scale.x = 1.18;
       } else {
         wall('Window_Wide_Round', ox, D / 2, 0);
         put(house, 'Window_Wide_Round1', ox, 0, D / 2, 0);
@@ -211,6 +266,7 @@ export async function buildVillage(onProgress) {
 
     // Atap + muka depan/belakang atap
     put(house, `Roof_RoundTiles_${W}x${D}`, 0, WALL_H, 0, 0, 1, true);
+    gableFill(house, h.t, W, D);
     if (USE_GABLES) {
       put(house, `Roof_Front_Brick${W}`, 0, WALL_H, D / 2, 0);
       put(house, `Roof_Front_Brick${W}`, 0, WALL_H, -D / 2, Math.PI);

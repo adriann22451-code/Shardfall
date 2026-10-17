@@ -97,6 +97,22 @@ try {
 }
 scene.add(village.group);
 
+// Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
+const npcGltf = {};
+const itemGltf = {};
+try {
+  const models = [...new Set(NPCS.map((n) => n.model))];
+  const items = [...new Set(NPCS.flatMap((n) => Object.values(n.items || {})))];
+  await Promise.all([
+    ...models.map(async (n) => (npcGltf[n] = await load(n + '.glb'))),
+    ...items.map(async (n) => (itemGltf[n] = n === 'sword_1handed' ? swordGltf : await load(n + '.gltf'))),
+  ]);
+} catch (err) {
+  console.error(err);
+  infoEl.textContent = 'Gagal memuat model warga desa (assets/).';
+  throw err;
+}
+
 // Semua karakter KayKit memakai rig yang sama (Rig_Medium), jadi animasinya dibagi bersama.
 const clips = [
   ...generalGltf.animations,
@@ -284,8 +300,17 @@ function makeLabel(text) {
   return sp;
 }
 for (const def of NPCS) {
-  const model = SkeletonUtils.clone(knightGltf.scene);
+  const model = SkeletonUtils.clone(npcGltf[def.model].scene);
   prepareModel(model);
+  for (const [hand, item] of Object.entries(def.items || {})) {
+    const slot = model.getObjectByName('handslot.' + hand);
+    const src = itemGltf[item];
+    if (slot && src) {
+      const it = SkeletonUtils.clone(src.scene);
+      prepareModel(it);
+      slot.add(it);
+    }
+  }
   const root = new THREE.Group();
   root.add(model);
   root.position.set(def.x, 0, def.z);
