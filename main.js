@@ -26,7 +26,7 @@ const setStage = (t) => (loadStage.textContent = t);
 function loadError(msg) {
   loadingEl.classList.add('error');
   loadStage.textContent = msg;
-  loadTip.textContent = 'Buka lewat server lokal / GitHub Pages dan pastikan folder assets/ ikut terunggah.';
+  loadTip.textContent = 'Open it through a local server / GitHub Pages and make sure the assets/ folder is uploaded too.';
 }
 // Bar bergerak halus menuju nilai sebenarnya
 (function animateLoad() {
@@ -38,12 +38,12 @@ function loadError(msg) {
   if (!(loadFinished && loadShown >= 1)) requestAnimationFrame(animateLoad);
 })();
 const TIPS = [
-  'Kristal Inti retak sedikit lebih lebar setiap malam.',
-  'Monster di luar sana dulunya adalah warga desa yang dikorbankan.',
-  'Empat pecahan kristal tersebar di empat wilayah, masing-masing dijaga satu penjaga.',
-  'Tekan Hindar tepat sebelum serangan musuh kena untuk menghindarinya.',
-  'Tetua Desa tahu lebih banyak daripada yang ia katakan.',
-  'Skill Lompat menghantam semua musuh di sekitarmu, cocok saat terkepung.',
+  'The Core Crystal cracks a little wider every night.',
+  'The monsters out there were once villagers who were sacrificed.',
+  'Four crystal shards lie in four regions, each guarded by a warden.',
+  'Press Dodge just before an enemy strike lands to avoid it.',
+  'The Village Elder knows more than he says.',
+  'Leap hits every enemy around you, perfect when surrounded.',
 ];
 let tipIdx = Math.floor(Math.random() * TIPS.length);
 const showTip = () => {
@@ -66,7 +66,7 @@ for (let i = 0; i < 18; i++) {
   s.style.opacity = 0.25 + Math.random() * 0.5;
   shardLayer.appendChild(s);
 }
-setStage('Memuat karakter dan senjata...');
+setStage('Loading characters and weapons...');
 
 const TAU = Math.PI * 2;
 const ARENA = 38; // batas lantai (lantai 80x80)
@@ -137,32 +137,32 @@ try {
     ]);
 } catch (err) {
   console.error(err);
-  loadError('Gagal memuat aset game.');
+  loadError('Failed to load game assets.');
   throw err;
 }
 
-setStage('Membangun desa...');
+setStage('Building the village...');
 try {
   village = await buildVillage(bump);
 } catch (err) {
   console.error(err);
-  loadError('Gagal memuat aset desa (assets/village/).');
+  loadError('Failed to load village assets (assets/village/).');
   throw err;
 }
 scene.add(village.group);
 
-setStage('Menyalakan obor dungeon...');
+setStage('Lighting the dungeon torches...');
 try {
   dungeon = await buildDungeon(bump);
 } catch (err) {
   console.error(err);
-  loadError('Gagal memuat aset dungeon (assets/dungeon/).');
+  loadError('Failed to load dungeon assets (assets/dungeon/).');
   throw err;
 }
 arenaGroup.add(dungeon.group);
 
 // Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
-setStage('Memanggil warga desa...');
+setStage('Calling the villagers...');
 const npcGltf = {};
 const itemGltf = {};
 try {
@@ -174,7 +174,7 @@ try {
   ]);
 } catch (err) {
   console.error(err);
-  loadError('Gagal memuat model warga desa.');
+  loadError('Failed to load villager models.');
   throw err;
 }
 
@@ -890,10 +890,10 @@ function updateHud() {
   const near = zone === 'village' && !talk ? nearestNpc(3.2) : null;
   talkBtn.style.display = near ? 'flex' : 'none';
   infoEl.textContent = state.hp <= 0
-    ? `Kamu kalah! Kill: ${state.kills} — refresh untuk main lagi`
+    ? `You were defeated! Kills: ${state.kills} — refresh to play again`
     : zone === 'village'
-      ? `${VILLAGE_NAME} — gerbang di utara menuju Hutan Akar`
-      : `Dungeon — Kill: ${state.kills} · portal emas di ujung = kembali ke desa`;
+      ? `${VILLAGE_NAME} — the north gate leads to the Root Forest`
+      : `Dungeon — Kills: ${state.kills} · golden portal at the far end = back to the village`;
   updateSkillUi();
 }
 
@@ -1028,7 +1028,7 @@ function tick() {
 }
 setZone('village'); // zona awal
 renderer.render(scene, camera); // pemanasan shader sebelum layar loading dibuka
-setStage('Siap!');
+setStage('Ready!');
 loadFinished = true;
 clearInterval(tipTimer);
 setTimeout(() => {

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-export const VILLAGE_NAME = 'Desa Lembah Retak';
+export const VILLAGE_NAME = 'Cracked Valley Village';
 
 // Kalau bagian depan/belakang atap terlihat dobel atau tembus, ubah ke false / true.
 const USE_GABLES = true;
@@ -26,44 +26,44 @@ const HOUSES = [
 export const NPCS = [
   {
     id: 'elder',
-    name: 'Tetua Desa',
+    name: 'Village Elder',
     model: 'Mage', items: { r: 'staff' },
     look: { headMesh: 'Mage_Head', hide: ['Mage_Hat'], hair: 0xe9e9ef, beard: 0xf4f4f4, lean: 0.12, scale: 0.93 },
     x: -5, z: -5, face: Math.PI / 4,
     lines: [
-      'Kau lihat kristal itu? Dulu ia berdenyut tenang. Sekarang retaknya melebar setiap malam.',
-      'Mereka yang hilang bukan pergi. Kristal itu yang memanggil mereka, dan monster di luar sana dulunya tetangga kita.',
-      'Empat pecahan kristal tersebar di empat wilayah. Penjaganya harus ditumbangkan satu per satu.',
+      'Do you see that crystal? It used to pulse so calmly. Now its cracks widen every night.',
+      'Those who vanished did not simply leave. The crystal called them, and the monsters out there were once our neighbors.',
+      'Four crystal shards lie scattered across four regions. Their wardens must be felled one by one.',
     ],
   },
   {
     id: 'smith',
-    name: 'Pandai Besi',
+    name: 'Blacksmith',
     model: 'Barbarian', items: { r: 'axe_1handed' },
     x: 8, z: 5, face: -Math.PI / 2,
     lines: [
-      'Pedang itu masih bagus. Tapi tulang-tulang di dungeon makin keras tiap hari.',
-      'Bawa pecahan kristal padaku nanti. Aku belum tahu apa yang akan terjadi pada logam yang menyentuhnya.',
+      'That sword is still good. But the bones in the dungeon grow harder every day.',
+      'Bring me a crystal shard someday. I have no idea what it will do to the metal it touches.',
     ],
   },
   {
     id: 'guard',
-    name: 'Penjaga Gerbang',
+    name: 'Gate Guard',
     model: 'Ranger', items: { r: 'sword_1handed', l: 'shield_round' },
     x: -3.6, z: 31.5, face: Math.PI,
     lines: [
-      'Gerbang ini menuju Hutan Akar, wilayah pertama. Penjaganya bernama Penjaga Akar.',
-      'Dulu ia petani yang menanam di tepi hutan. Jangan ragu saat melawannya.',
+      'This gate leads to the Root Forest, the first region. Its warden is called the Root Warden.',
+      'He used to be a farmer who tended the edge of the forest. Do not hesitate when you fight him.',
     ],
   },
   {
     id: 'guard2',
-    name: 'Penjaga Gerbang',
+    name: 'Gate Guard',
     model: 'Rogue', items: { r: 'sword_1handed', l: 'shield_round' },
     x: 3.6, z: 31.5, face: Math.PI,
     lines: [
-      'Kami berdua berjaga sejak retakan pertama muncul. Belum pernah ada yang kembali dari dalam tanpa luka.',
-      'Kembalilah hidup-hidup. Desa ini tidak sanggup kehilangan satu orang lagi.',
+      'We two have stood guard since the first crack appeared. No one has come back from inside unscathed.',
+      'Come back alive. This village cannot afford to lose one more soul.',
     ],
   },
 ];
@@ -118,7 +118,7 @@ export async function buildVillage(onProgress) {
   const put = (parent, name, x, y, z, ry = 0, s = 1, center = false) => {
     const src = models[name];
     if (!src) {
-      console.warn('Model desa tidak ditemukan:', name);
+      console.warn('Village model not found:', name);
       return null;
     }
     const o = src.clone();
