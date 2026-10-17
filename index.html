@@ -43,6 +43,45 @@
   #dialogName { font-weight: 700; color: #ffe9a8; margin-bottom: 4px; }
   #dialogText { font-size: 15px; line-height: 1.45; }
   #dialogHint { margin-top: 6px; font-size: 11px; opacity: .6; text-align: right; }
+
+  /* ---------- Layar loading ---------- */
+  #loading { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; box-sizing: border-box; color: #e9ecff; text-align: center; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 38%, #1d2a55 0%, #0f1330 45%, #07081a 100%);
+    transition: opacity .8s ease, visibility .8s; }
+  #loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
+  #loadShards { position: absolute; inset: 0; pointer-events: none; }
+  #loadShards i { position: absolute; bottom: -30px; width: var(--sz); height: calc(var(--sz) * 2.2);
+    background: linear-gradient(160deg, #bff4ff, #4fb8ff 60%, #7a5cff); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    animation: shardUp linear infinite; filter: drop-shadow(0 0 6px #5fd4ff); }
+  @keyframes shardUp { to { transform: translateY(-115vh) rotate(180deg); } }
+
+  #loadCrystal { width: min(34vw, 150px); height: auto; margin-bottom: 8px; animation: crystalFloat 3.2s ease-in-out infinite; }
+  @keyframes crystalFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+  #loadCrystal .glow { animation: crystalPulse 2.4s ease-in-out infinite; transform-origin: center; }
+  @keyframes crystalPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  #loadCrystal .crack { stroke-dasharray: 160; stroke-dashoffset: 160; animation: crackDraw 3.6s ease-in-out infinite; }
+  @keyframes crackDraw { 0% { stroke-dashoffset: 160; opacity: 0; } 30% { opacity: 1; } 70%,100% { stroke-dashoffset: 0; opacity: 1; } }
+
+  #loading h1 { margin: 6px 0 0; font-size: clamp(34px, 11vw, 64px); font-weight: 800; letter-spacing: .28em; padding-left: .28em;
+    background: linear-gradient(180deg, #ffffff 20%, #9fd8ff 70%, #7a8cff); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 14px rgba(95,212,255,.45)); }
+  #loading .sub { margin-top: 4px; font-size: 13px; letter-spacing: .35em; text-transform: uppercase; opacity: .6; padding-left: .35em; }
+
+  #loadWrap { width: min(420px, 82vw); margin-top: 38px; }
+  #loadTrack { position: relative; height: 10px; border-radius: 6px; background: rgba(255,255,255,.09); border: 1px solid rgba(160,200,255,.25); overflow: hidden; }
+  #loadBar { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0);
+    background: linear-gradient(90deg, #3aa0ff, #5fd4ff 55%, #b48cff); box-shadow: 0 0 14px #5fd4ff; border-radius: 6px; }
+  #loadBar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%);
+    animation: shimmer 1.4s linear infinite; }
+  @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  #loadMeta { display: flex; justify-content: space-between; margin-top: 10px; font-size: 13px; opacity: .85; }
+  #loadStage { text-align: left; }
+  #loadPct { font-variant-numeric: tabular-nums; font-weight: 700; color: #9fe6ff; }
+  #loadTip { margin-top: 30px; max-width: min(460px, 86vw); min-height: 2.8em; font-size: 14px; line-height: 1.45; font-style: italic; opacity: .72; transition: opacity .35s; }
+  #loadTip.swap { opacity: 0; }
+  #loading.error #loadBar { background: #e33; box-shadow: 0 0 14px #e33; }
+  #loading.error #loadStage { color: #ff8b8b; }
 </style>
 <script type="importmap">
 {
@@ -54,6 +93,29 @@
 </script>
 </head>
 <body>
+  <div id="loading">
+    <div id="loadShards"></div>
+    <svg id="loadCrystal" viewBox="0 0 200 240" aria-hidden="true">
+      <defs>
+        <linearGradient id="cg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6fbff"/><stop offset=".5" stop-color="#6fd8ff"/><stop offset="1" stop-color="#3a6bff"/></linearGradient>
+        <linearGradient id="cg2" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fe9ff"/><stop offset="1" stop-color="#2a3fd0"/></linearGradient>
+        <radialGradient id="cglow"><stop offset="0" stop-color="#5fd4ff" stop-opacity=".9"/><stop offset="1" stop-color="#5fd4ff" stop-opacity="0"/></radialGradient>
+      </defs>
+      <circle class="glow" cx="100" cy="120" r="100" fill="url(#cglow)"/>
+      <polygon points="100,14 150,120 100,226 50,120" fill="url(#cg1)"/>
+      <polygon points="100,14 150,120 100,226" fill="url(#cg2)" opacity=".75"/>
+      <polyline points="100,14 100,226 M50,120 150,120" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2"/>
+      <polyline class="crack" points="104,40 92,78 108,104 90,142 106,170 96,208" fill="none" stroke="#ff5ad8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1>SHARDFALL</h1>
+    <div class="sub">Desa Lembah Retak</div>
+    <div id="loadWrap">
+      <div id="loadTrack"><div id="loadBar"></div></div>
+      <div id="loadMeta"><span id="loadStage">Memuat...</span><span id="loadPct">0%</span></div>
+    </div>
+    <div id="loadTip"></div>
+  </div>
+
   <div id="hud">
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
     <div id="hpbar"><div id="hp"></div></div>

@@ -88,6 +88,8 @@ function modelNames() {
   return [...n];
 }
 
+export const villageModelCount = () => modelNames().length;
+
 export async function buildVillage(onProgress) {
   THREE.Cache.enabled = true;
   const loader = new GLTFLoader().setPath('assets/village/');

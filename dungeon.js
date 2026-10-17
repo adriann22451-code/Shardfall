@@ -14,6 +14,8 @@ const NAMES = [
   'crates_stacked', 'chest_gold', 'rubble_large', 'table_long_decorated_A',
 ];
 
+export const DUNGEON_MODEL_COUNT = NAMES.length;
+
 // Pengacak deterministik supaya lantai selalu sama
 function rng(seed) {
   let s = seed >>> 0;

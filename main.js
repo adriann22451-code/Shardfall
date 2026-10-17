@@ -1,12 +1,72 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { buildVillage, NPCS, VILLAGE_NAME } from './village.js';
-import { buildDungeon } from './dungeon.js';
+import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.js';
+import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
-infoEl.textContent = 'Memuat aset...';
+
+// ---------- Layar loading ----------
+const loadingEl = document.getElementById('loading');
+const loadBar = document.getElementById('loadBar');
+const loadPct = document.getElementById('loadPct');
+const loadStage = document.getElementById('loadStage');
+const loadTip = document.getElementById('loadTip');
+const BASE_FILES = 9;
+const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size;
+const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT;
+let loadDone = 0;
+let loadShown = 0;
+let loadFinished = false;
+const bump = () => {
+  loadDone = Math.min(loadTotal, loadDone + 1);
+};
+const setStage = (t) => (loadStage.textContent = t);
+function loadError(msg) {
+  loadingEl.classList.add('error');
+  loadStage.textContent = msg;
+  loadTip.textContent = 'Buka lewat server lokal / GitHub Pages dan pastikan folder assets/ ikut terunggah.';
+}
+// Bar bergerak halus menuju nilai sebenarnya
+(function animateLoad() {
+  const target = loadFinished ? 1 : loadDone / loadTotal;
+  loadShown += (target - loadShown) * 0.12;
+  if (target - loadShown < 0.001) loadShown = target;
+  loadBar.style.transform = `scaleX(${loadShown})`;
+  loadPct.textContent = Math.round(loadShown * 100) + '%';
+  if (!(loadFinished && loadShown >= 1)) requestAnimationFrame(animateLoad);
+})();
+const TIPS = [
+  'Kristal Inti retak sedikit lebih lebar setiap malam.',
+  'Monster di luar sana dulunya adalah warga desa yang dikorbankan.',
+  'Empat pecahan kristal tersebar di empat wilayah, masing-masing dijaga satu penjaga.',
+  'Tekan Hindar tepat sebelum serangan musuh kena untuk menghindarinya.',
+  'Tetua Desa tahu lebih banyak daripada yang ia katakan.',
+  'Skill Lompat menghantam semua musuh di sekitarmu, cocok saat terkepung.',
+];
+let tipIdx = Math.floor(Math.random() * TIPS.length);
+const showTip = () => {
+  loadTip.classList.add('swap');
+  setTimeout(() => {
+    loadTip.textContent = TIPS[tipIdx++ % TIPS.length];
+    loadTip.classList.remove('swap');
+  }, 350);
+};
+showTip();
+const tipTimer = setInterval(showTip, 3800);
+// Serpihan kristal melayang di latar
+const shardLayer = document.getElementById('loadShards');
+for (let i = 0; i < 18; i++) {
+  const s = document.createElement('i');
+  s.style.left = Math.random() * 100 + '%';
+  s.style.setProperty('--sz', 6 + Math.random() * 16 + 'px');
+  s.style.animationDuration = 9 + Math.random() * 10 + 's';
+  s.style.animationDelay = -Math.random() * 14 + 's';
+  s.style.opacity = 0.25 + Math.random() * 0.5;
+  shardLayer.appendChild(s);
+}
+setStage('Memuat karakter dan senjata...');
 
 const TAU = Math.PI * 2;
 const ARENA = 38; // batas lantai (lantai 80x80)
@@ -58,7 +118,7 @@ arenaGroup.add(arenaPortalLight);
 
 // ---------- Muat aset (KayKit, CC0) ----------
 const loader = new GLTFLoader();
-const load = (file) => loader.loadAsync('assets/' + file);
+const load = (file) => loader.loadAsync('assets/' + file).then((g) => (bump(), g));
 
 let village, dungeon;
 let knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, moveAdvGltf, meleeGltf, swordGltf, bladeGltf;
@@ -77,29 +137,32 @@ try {
     ]);
 } catch (err) {
   console.error(err);
-  infoEl.textContent = 'Gagal memuat aset. Buka lewat server lokal dan pastikan folder assets/ ada di samping index.html.';
+  loadError('Gagal memuat aset game.');
   throw err;
 }
 
+setStage('Membangun desa...');
 try {
-  village = await buildVillage((n, total) => (infoEl.textContent = `Memuat desa... ${n}/${total}`));
+  village = await buildVillage(bump);
 } catch (err) {
   console.error(err);
-  infoEl.textContent = 'Gagal memuat aset desa (folder assets/village/).';
+  loadError('Gagal memuat aset desa (assets/village/).');
   throw err;
 }
 scene.add(village.group);
 
+setStage('Menyalakan obor dungeon...');
 try {
-  dungeon = await buildDungeon((n, total) => (infoEl.textContent = `Memuat dungeon... ${n}/${total}`));
+  dungeon = await buildDungeon(bump);
 } catch (err) {
   console.error(err);
-  infoEl.textContent = 'Gagal memuat aset dungeon (folder assets/dungeon/).';
+  loadError('Gagal memuat aset dungeon (assets/dungeon/).');
   throw err;
 }
 arenaGroup.add(dungeon.group);
 
 // Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
+setStage('Memanggil warga desa...');
 const npcGltf = {};
 const itemGltf = {};
 try {
@@ -111,7 +174,7 @@ try {
   ]);
 } catch (err) {
   console.error(err);
-  infoEl.textContent = 'Gagal memuat model warga desa (assets/).';
+  loadError('Gagal memuat model warga desa.');
   throw err;
 }
 
@@ -964,4 +1027,12 @@ function tick() {
   requestAnimationFrame(tick);
 }
 setZone('village'); // zona awal
+renderer.render(scene, camera); // pemanasan shader sebelum layar loading dibuka
+setStage('Siap!');
+loadFinished = true;
+clearInterval(tipTimer);
+setTimeout(() => {
+  loadingEl.classList.add('done');
+  setTimeout(() => loadingEl.remove(), 900);
+}, 450);
 tick();
