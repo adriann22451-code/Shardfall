@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildVillage, NPCS, VILLAGE_NAME } from './village.js';
+import { buildDungeon } from './dungeon.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
@@ -42,24 +43,16 @@ const SUN_OFFSET = new THREE.Vector3(10, 20, 8);
 // Arena dungeon (lantai gelap + grid); desa punya tanahnya sendiri
 const arenaGroup = new THREE.Group();
 scene.add(arenaGroup);
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(80, 80),
-  new THREE.MeshStandardMaterial({ color: 0x2b2f3a })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-arenaGroup.add(ground);
-arenaGroup.add(new THREE.GridHelper(80, 40, 0x444a5a, 0x333846));
 
 // Portal kembali ke desa (di ujung arena)
-const ARENA_PORTAL = { x: 0, z: 34, r: 1.8 };
+const ARENA_PORTAL = { x: 0, z: 36, r: 1.8 };
 const arenaPortal = new THREE.Mesh(
   new THREE.CylinderGeometry(1.6, 1.6, 3.2, 24, 1, true),
   new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
 );
 arenaPortal.position.set(ARENA_PORTAL.x, 1.6, ARENA_PORTAL.z);
 arenaGroup.add(arenaPortal);
-const arenaPortalLight = new THREE.PointLight(0xffd36b, 2, 12, 1.6);
+const arenaPortalLight = new THREE.PointLight(0xffd36b, 25, 16, 2);
 arenaPortalLight.position.set(ARENA_PORTAL.x, 2, ARENA_PORTAL.z);
 arenaGroup.add(arenaPortalLight);
 
@@ -67,7 +60,7 @@ arenaGroup.add(arenaPortalLight);
 const loader = new GLTFLoader();
 const load = (file) => loader.loadAsync('assets/' + file);
 
-let village;
+let village, dungeon;
 let knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, moveAdvGltf, meleeGltf, swordGltf, bladeGltf;
 try {
   [knightGltf, minionGltf, warriorGltf, generalGltf, moveGltf, moveAdvGltf, meleeGltf, swordGltf, bladeGltf] =
@@ -96,6 +89,15 @@ try {
   throw err;
 }
 scene.add(village.group);
+
+try {
+  dungeon = await buildDungeon((n, total) => (infoEl.textContent = `Memuat dungeon... ${n}/${total}`));
+} catch (err) {
+  console.error(err);
+  infoEl.textContent = 'Gagal memuat aset dungeon (folder assets/dungeon/).';
+  throw err;
+}
+arenaGroup.add(dungeon.group);
 
 // Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
 const npcGltf = {};
@@ -380,7 +382,7 @@ dialogEl.addEventListener('pointerdown', (e) => {
 let zone = 'village';
 const ZONES = {
   village: { bg: 0x7b8fb5, fogNear: 50, fogFar: 120, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
-  arena: { bg: 0x14161c, fogNear: 25, fogFar: 60, sky: 0xaabbff, ground: 0x332211, hemi: 0.9, sunColor: 0xffffff, sun: 1.3 },
+  arena: { bg: 0x0d0e14, fogNear: 30, fogFar: 85, sky: 0x8fa0d8, ground: 0x2a1c14, hemi: 0.7, sunColor: 0x9fb4ff, sun: 0.6 },
 };
 function setZone(name) {
   zone = name;
@@ -425,6 +427,11 @@ function updateCamera(dt) {
     target.y + Math.sin(camPitch) * camDist,
     target.z + Math.cos(camYaw) * cp * camDist
   );
+  if (zone === 'arena') {
+    // tetap di dalam aula supaya dinding tidak menutupi pandangan
+    desired.x = clamp(desired.x, -ARENA - 0.5, ARENA + 0.5);
+    desired.z = clamp(desired.z, -ARENA - 0.5, ARENA + 0.5);
+  }
   camera.position.lerp(desired, 1 - Math.pow(0.0002, dt));
   camera.lookAt(target);
 }
@@ -744,10 +751,9 @@ function damagePlayer(amount) {
   }
 }
 
-// Dorong pemain keluar dari bangunan / pagar / kristal (lingkaran vs kotak)
-function collidePlayer(r = 0.5) {
-  const pos = player.position;
-  for (const c of village.colliders) {
+// Dorong titik keluar dari bangunan / pagar / kristal (lingkaran vs kotak)
+function collidePos(pos, r, list) {
+  for (const c of list) {
     const cx = clamp(pos.x, c.x0, c.x1);
     const cz = clamp(pos.z, c.z0, c.z1);
     const dx = pos.x - cx;
@@ -760,14 +766,15 @@ function collidePlayer(r = 0.5) {
       pos.z = cz + (dz / d) * r;
     } else {
       const l = pos.x - c.x0, rt = c.x1 - pos.x, t = pos.z - c.z0, b = c.z1 - pos.z;
-      const m = Math.min(l, rt, t, b);
-      if (m === l) pos.x = c.x0 - r;
-      else if (m === rt) pos.x = c.x1 + r;
-      else if (m === t) pos.z = c.z0 - r;
+      const mn = Math.min(l, rt, t, b);
+      if (mn === l) pos.x = c.x0 - r;
+      else if (mn === rt) pos.x = c.x1 + r;
+      else if (mn === t) pos.z = c.z0 - r;
       else pos.z = c.z1 + r;
     }
   }
 }
+const colliderList = () => (zone === 'village' ? village.colliders : dungeon.colliders);
 
 // ---------- HUD ----------
 function updateHud() {
@@ -825,7 +832,7 @@ function tick() {
     }
     player.position.x = clamp(player.position.x, -ARENA, ARENA);
     player.position.z = clamp(player.position.z, -ARENA, ARENA);
-    if (zone === 'village') collidePlayer();
+    collidePos(player.position, 0.5, colliderList());
 
     // Serang
     if (keys.has('Space') || keys.has('KeyJ') || keys.has('Attack') || keys.has('AttackBtn')) attack();
@@ -858,6 +865,7 @@ function tick() {
     en.knock.multiplyScalar(Math.exp(-8 * dt));
     en.root.position.x = clamp(en.root.position.x, -ARENA, ARENA);
     en.root.position.z = clamp(en.root.position.z, -ARENA, ARENA);
+    collidePos(en.root.position, 0.5, dungeon.colliders);
     en.hitCooldown = Math.max(0, en.hitCooldown - dt);
 
     const stunned = en.actor.lock > 0;
@@ -899,7 +907,8 @@ function tick() {
     if (talk && Math.hypot(talk.npc.root.position.x - player.position.x, talk.npc.root.position.z - player.position.z) > 5.5) closeDialog();
   } else {
     arenaPortal.rotation.y += dt;
-    arenaPortalLight.intensity = 2 + Math.sin(clock.elapsedTime * 3) * 0.5;
+    arenaPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3) * 6;
+    dungeon.update(clock.elapsedTime);
   }
   sun.target.position.copy(player.position);
   sun.position.copy(player.position).add(SUN_OFFSET);

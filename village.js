@@ -319,7 +319,7 @@ export async function buildVillage(onProgress) {
     s.rotation.set(Math.sin(a) * 0.4, a, Math.cos(a) * 0.4);
     crystal.add(s);
   }
-  const crystalLight = new THREE.PointLight(0x5fd4ff, 3, 22, 1.6);
+  const crystalLight = new THREE.PointLight(0x5fd4ff, 40, 28, 2);
   crystalLight.position.set(0, 3.5, 0);
   crystal.add(crystalLight);
   colliders.push({ x0: -2.8, x1: 2.8, z0: -2.8, z1: 2.8 });
@@ -327,7 +327,7 @@ export async function buildVillage(onProgress) {
   animated.push((t) => {
     core.position.y = 3.2 + Math.sin(t * 1.3) * 0.25;
     core.rotation.y = t * 0.5;
-    crystalLight.intensity = 3 + Math.sin(t * 2.1) * 0.7 + Math.sin(t * 5.3) * 0.25;
+    crystalLight.intensity = 40 + Math.sin(t * 2.1) * 9 + Math.sin(t * 5.3) * 3;
   });
 
   // ---------- Gerbang dungeon (z = +34) ----------
@@ -354,12 +354,12 @@ export async function buildVillage(onProgress) {
   const portal = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.6), portalMat);
   portal.position.set(0, 1.9, 0);
   gate.add(portal);
-  const portalLight = new THREE.PointLight(0xa86bff, 2.2, 14, 1.6);
+  const portalLight = new THREE.PointLight(0xa86bff, 28, 18, 2);
   portalLight.position.set(0, 2.2, -1.5);
   gate.add(portalLight);
   animated.push((t) => {
     portalMat.opacity = 0.5 + Math.sin(t * 2.4) * 0.15;
-    portalLight.intensity = 2.2 + Math.sin(t * 3.1) * 0.5;
+    portalLight.intensity = 28 + Math.sin(t * 3.1) * 6;
   });
 
   // ---------- Pagar batas desa ----------
