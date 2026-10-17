@@ -92,6 +92,51 @@
     background: rgba(10,16,12,.82); border: 1px solid rgba(190,255,190,.55); color: #e9ffe9; font-weight: 700; text-align: center; font-size: 15px;
     opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s; z-index: 6; text-shadow: 0 1px 2px #000; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- Inventory, shop, HUD item ---------- */
+  #goldRow { margin: 2px 0 4px; font-weight: 700; font-size: 14px; color: #ffe08a; }
+  #buffs { font-size: 13px; font-weight: 700; color: #bff4ff; min-height: 18px; }
+  #btnBag { right: 14px; top: 14px; width: 54px; height: 54px; font-size: 12px; background: rgba(60,70,110,.7); }
+  #btnQ1, #btnQ2 { width: 52px; height: 52px; background: rgba(110,40,40,.65); }
+  #btnQ1 { right: 192px; bottom: 36px; }
+  #btnQ2 { right: 192px; bottom: 96px; background: rgba(120,50,100,.65); }
+  .qi { font-size: 20px; line-height: 1; }
+  #btnQ1 small, #btnQ2 small { font-size: 12px; opacity: .95; }
+  .btn.empty { opacity: .45; }
+
+  .panel { position: fixed; inset: 0; z-index: 8; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+  .panel.open { display: flex; }
+  .pbox { width: min(520px, 94vw); max-height: 86vh; overflow-y: auto; box-sizing: border-box; padding: 14px; border-radius: 12px;
+    background: #121726; border: 2px solid rgba(160,190,255,.45); color: #fff; touch-action: pan-y; }
+  .phead { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 18px; margin-bottom: 10px; }
+  .phead span:first-child { flex: 1; letter-spacing: .08em; }
+  .phead span + span { font-size: 15px; color: #ffe08a; }
+  .phead button { background: none; border: 1px solid rgba(255,255,255,.4); color: #fff; border-radius: 6px; width: 34px; height: 34px; font-size: 16px; }
+  #bagGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .slot { position: relative; aspect-ratio: 1; border-radius: 8px; border: 2px solid rgba(255,255,255,.18); background: rgba(255,255,255,.05);
+    display: flex; align-items: center; justify-content: center; font-size: 26px; }
+  .slot.has { border-color: rgba(160,190,255,.55); background: rgba(80,100,170,.25); }
+  .slot.sel { border-color: #ffe08a; box-shadow: 0 0 10px rgba(255,224,138,.5); }
+  .slot b { position: absolute; right: 4px; bottom: 1px; font-size: 12px; text-shadow: 0 1px 2px #000; }
+  #bagInfo { margin-top: 12px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.06); min-height: 72px; }
+  #bagName { font-weight: 800; color: #ffe9a8; margin-bottom: 2px; }
+  #bagDesc { font-size: 14px; opacity: .85; line-height: 1.4; }
+  .pbtn { margin-top: 8px; padding: 8px 18px; border-radius: 8px; border: 0; background: #3b7be0; color: #fff; font-weight: 700; font-size: 14px; display: none; }
+  #shopTabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  .tab { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.05); color: #fff; font-weight: 700; }
+  .tab.on { background: #3b7be0; border-color: #3b7be0; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.05); margin-bottom: 6px; }
+  .row .ri { font-size: 26px; width: 34px; text-align: center; }
+  .row .rt { flex: 1; font-size: 14px; line-height: 1.3; }
+  .row .rt small { display: block; opacity: .65; font-size: 12px; }
+  .row button { padding: 7px 12px; border-radius: 8px; border: 0; background: #2f9e55; color: #fff; font-weight: 700; font-size: 13px; }
+  .row button:disabled { background: #444; opacity: .6; }
+  .empty-note { opacity: .6; text-align: center; padding: 14px; font-size: 14px; }
+
+  #pops { position: fixed; inset: 0; pointer-events: none; z-index: 7; overflow: hidden; }
+  .pop { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); font-weight: 800; font-size: 18px; text-shadow: 0 2px 4px #000, 0 0 8px #000;
+    animation: popUp 1.3s ease-out forwards; white-space: nowrap; }
+  @keyframes popUp { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -70px); } }
 </style>
 <script type="importmap">
 {
@@ -132,8 +177,10 @@
   <div id="hud">
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
     <div id="hpbar"><div id="hp"></div></div>
+    <div id="goldRow">🪙 <span id="gold">0</span></div>
+    <div id="buffs"></div>
     <div id="info"></div>
-    <div id="help">WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
+    <div id="help">WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
   </div>
 
   <div id="controls">
@@ -142,9 +189,26 @@
     <div class="btn" id="btnS2">Thrust<small>2</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnS1">Leap<small>1</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnDodge">Dodge<small>Shift</small><div class="cd"></div><div class="cdt"></div></div>
+    <div class="btn" id="btnBag">Bag<small>I</small></div>
+    <div class="btn" id="btnQ1"><span class="qi">🧪</span><small id="q1c">0</small><div class="cd"></div></div>
+    <div class="btn" id="btnQ2"><span class="qi">⚗️</span><small id="q2c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnTalk">Talk<small>F</small></div>
     <div class="btn" id="btnAttack">Attack<small>Space</small></div>
   </div>
+
+  <div id="pops"></div>
+
+  <div id="bag" class="panel"><div class="pbox">
+    <div class="phead"><span>Inventory</span><span id="bagGold">🪙 0</span><button id="bagClose">✕</button></div>
+    <div id="bagGrid"></div>
+    <div id="bagInfo"><div id="bagName">Select an item</div><div id="bagDesc">Tap an item to see what it does.</div><button id="bagUse" class="pbtn">Use</button></div>
+  </div></div>
+
+  <div id="shop" class="panel"><div class="pbox">
+    <div class="phead"><span>Merchant</span><span id="shopGold">🪙 0</span><button id="shopClose">✕</button></div>
+    <div id="shopTabs"><button id="tabBuy" class="tab on">Buy</button><button id="tabSell" class="tab">Sell</button></div>
+    <div id="shopList"></div>
+  </div></div>
 
   <div id="dialog"><div id="dialogName"></div><div id="dialogText"></div><div id="dialogHint">tap / F: continue</div></div>
 

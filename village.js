@@ -47,6 +47,14 @@ export const NPCS = [
     ],
   },
   {
+    id: 'merchant',
+    name: 'Merchant',
+    model: 'Rogue_Hooded', items: {},
+    shop: true,
+    x: 10.5, z: -1.2, face: -Math.PI / 2,
+    lines: ['Potions, elixirs, anything a hunter needs.'],
+  },
+  {
     id: 'guard',
     name: 'Gate Guard',
     model: 'Ranger', items: { r: 'sword_1handed', l: 'shield_round' },

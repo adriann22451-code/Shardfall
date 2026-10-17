@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.js';
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
+import { ITEMS, SHOP, LOOT, LOOT_MODELS, LOOT_FILES } from './items.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
@@ -16,7 +17,7 @@ const loadStage = document.getElementById('loadStage');
 const loadTip = document.getElementById('loadTip');
 const BASE_FILES = 9;
 const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size + 1; // +1: kapak dua tangan boss
-const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT;
+const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT + LOOT_FILES.length;
 let loadDone = 0;
 let loadShown = 0;
 let loadFinished = false;
@@ -189,6 +190,22 @@ try {
 }
 const bossGroup = bossRoom.group;
 scene.add(bossGroup);
+
+setStage('Stocking potions and loot...');
+const lootModels = {};
+try {
+  const lootLoader = new GLTFLoader().setPath('assets/dungeon/');
+  await Promise.all(
+    LOOT_FILES.map(async (f) => {
+      lootModels[f] = (await lootLoader.loadAsync(f + '.gltf')).scene;
+      bump();
+    })
+  );
+} catch (err) {
+  console.error(err);
+  loadError('Failed to load loot models.');
+  throw err;
+}
 
 // Model warga desa (rig yang sama dengan Knight) dan perlengkapan di tangan mereka
 setStage('Calling the villagers...');
@@ -364,6 +381,7 @@ function spawnEnemy() {
     knock: new THREE.Vector3(),
     dead: false,
     deadTimer: 0,
+    type: warrior ? 'warrior' : 'minion',
   });
 }
 setInterval(() => {
@@ -492,7 +510,7 @@ function closeDialog() {
   dialogEl.style.display = 'none';
 }
 function interact() {
-  if (zone !== 'village' || state.hp <= 0) return;
+  if (uiOpen || zone !== 'village' || state.hp <= 0) return;
   if (talk) {
     talk.i++;
     if (talk.i >= talk.npc.def.lines.length) closeDialog();
@@ -501,6 +519,10 @@ function interact() {
   }
   const n = nearestNpc(3.2);
   if (!n) return;
+  if (n.def.shop) {
+    openShop();
+    return;
+  }
   talk = { npc: n, i: 0 };
   // NPC menoleh ke pemain
   n.root.rotation.y = Math.atan2(player.position.x - n.root.position.x, player.position.z - n.root.position.z);
@@ -550,6 +572,8 @@ function setZone(name, from = 'start') {
   for (const e of enemies) e.root.parent?.remove(e.root);
   enemies.length = 0;
   clearBossFx();
+  clearPickups();
+  closeUi();
   closeDialog();
   strikes.length = 0;
   state.dash = null;
@@ -601,6 +625,10 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space') e.preventDefault();
   if (e.repeat) return;
   if (e.code === 'KeyF') interact();
+  if (e.code === 'KeyI') toggleBag();
+  if (e.code === 'Escape') closeUi();
+  if (e.code === 'Digit3') quickUse('health_potion');
+  if (e.code === 'Digit4') quickUse('greater_potion');
   if (e.code === 'Digit1') useSkill('s1');
   if (e.code === 'Digit2') useSkill('s2');
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') useSkill('dodge');
@@ -772,6 +800,7 @@ function aimAtNearest(range) {
 }
 
 function damageEnemy(en, dir, dmg = 1, force = 7) {
+  dmg *= state.buffs.power > 0 ? 1.5 : 1; // Might Elixir
   if (en.boss) {
     // boss tidak terpental / tidak kena stagger
     if (en.ai.state === 'intro' || en.dead) return;
@@ -788,6 +817,7 @@ function damageEnemy(en, dir, dmg = 1, force = 7) {
     en.deadTimer = 1.8;
     state.kills++;
     playOnce(en.actor, 'Death_A', { hold: true });
+    dropLoot(en.type || 'minion', en.root.position.x, en.root.position.z);
   } else {
     playOnce(en.actor, 'Hit_A', { maxLock: 0.5 });
   }
@@ -837,7 +867,7 @@ const ATTACK_ANIM_SPEED = 2; // kecepatan animasi serangan (1 = asli)
 const STRIKE_DELAY = 0.14; // detik dari mulai animasi sampai damage jatuh
 
 function attack() {
-  if (talk) return;
+  if (talk || uiOpen) return;
   if (state.hp <= 0 || state.attackCooldown > 0 || state.skillLock > 0 || state.dash) return;
   state.attackCooldown = 0.5;
   state.lunge = 0.3;
@@ -1270,6 +1300,7 @@ function killBoss(en) {
   bossBarEl.style.display = 'none';
   eruption(en.root.position.x, en.root.position.z, 5);
   shake = 0.6;
+  dropLoot('boss', en.root.position.x, en.root.position.z + 1.5);
   if (save.shards.includes('root')) {
     toast('Root Warden defeated — the roots fall silent once more.', 4000);
     return;
@@ -1292,6 +1323,319 @@ function killBoss(en) {
   g.add(light);
   bossFx.add(g);
   shardDrop = { g, mesh, x, z, t: 0 };
+}
+
+// ---------- Inventory, potion, loot, dan toko ----------
+if (!save.inv) {
+  save.inv = { health_potion: 3 }; // bekal awal
+  save.gold = 25;
+  persist();
+}
+if (typeof save.gold !== 'number') save.gold = 0;
+state.buffs = { speed: 0, power: 0 };
+state.potionCd = 0;
+let uiOpen = false;
+
+const goldEl = document.getElementById('gold');
+const buffsEl = document.getElementById('buffs');
+const popsEl = document.getElementById('pops');
+const QUICK = [
+  { id: 'health_potion', el: document.getElementById('btnQ1') },
+  { id: 'greater_potion', el: document.getElementById('btnQ2') },
+];
+for (const q of QUICK) {
+  q.cEl = q.el.querySelector('small');
+  q.cdEl = q.el.querySelector('.cd');
+  q.el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    quickUse(q.id);
+  });
+}
+
+const invCount = (id) => (id === 'root_shard' ? save.shards.length : save.inv[id] || 0);
+function addItem(id, n = 1) {
+  save.inv[id] = Math.min(99, (save.inv[id] || 0) + n);
+  persist();
+}
+function removeItem(id, n = 1) {
+  save.inv[id] = (save.inv[id] || 0) - n;
+  if (save.inv[id] <= 0) delete save.inv[id];
+  persist();
+}
+function popText(text, color = '#fff') {
+  const d = document.createElement('div');
+  d.className = 'pop';
+  d.textContent = text;
+  d.style.color = color;
+  d.style.top = 32 + Math.random() * 8 + '%';
+  popsEl.appendChild(d);
+  setTimeout(() => d.remove(), 1300);
+}
+
+function useItem(id) {
+  const it = ITEMS[id];
+  if (!it || invCount(id) <= 0 || state.hp <= 0) return false;
+  if (state.potionCd > 0) return false;
+  if (it.heal) {
+    if (state.hp >= state.maxHp) {
+      popText('HP is already full', '#ffd0d0');
+      return false;
+    }
+    const gain = Math.min(it.heal, state.maxHp - state.hp);
+    state.hp += gain;
+    popText(`+${gain} HP`, '#7dff8a');
+  } else if (it.buff) {
+    state.buffs[it.buff] = it.dur;
+    popText(`${it.name}!`, '#ffe08a');
+  } else {
+    return false;
+  }
+  removeItem(id);
+  state.potionCd = 1.2;
+  if (bagEl.classList.contains('open')) renderBag();
+  return true;
+}
+function quickUse(id) {
+  if (uiOpen) return;
+  if (invCount(id) <= 0) {
+    popText(`No ${ITEMS[id].name} left`, '#ff9a9a');
+    return;
+  }
+  useItem(id);
+}
+
+// ----- Tas -----
+const bagEl = document.getElementById('bag');
+const bagGrid = document.getElementById('bagGrid');
+const bagName = document.getElementById('bagName');
+const bagDesc = document.getElementById('bagDesc');
+const bagUse = document.getElementById('bagUse');
+const bagGold = document.getElementById('bagGold');
+let bagSel = null;
+const bagEntries = () => {
+  const list = Object.keys(save.inv).map((id) => ({ id, n: save.inv[id] }));
+  if (save.shards.length) list.push({ id: 'root_shard', n: save.shards.length });
+  return list.filter((e) => ITEMS[e.id]);
+};
+function renderBag() {
+  bagGold.textContent = '🪙 ' + save.gold;
+  bagGrid.innerHTML = '';
+  const entries = bagEntries();
+  for (let i = 0; i < 20; i++) {
+    const e = entries[i];
+    const slot = document.createElement('div');
+    slot.className = 'slot' + (e ? ' has' : '') + (e && e.id === bagSel ? ' sel' : '');
+    if (e) {
+      slot.textContent = ITEMS[e.id].icon;
+      if (e.n > 1) {
+        const b = document.createElement('b');
+        b.textContent = e.n;
+        slot.appendChild(b);
+      }
+      slot.addEventListener('click', () => {
+        bagSel = e.id;
+        renderBag();
+      });
+    }
+    bagGrid.appendChild(slot);
+  }
+  const it = ITEMS[bagSel];
+  if (it && invCount(bagSel) > 0) {
+    bagName.textContent = `${it.name} ×${invCount(bagSel)}`;
+    bagDesc.textContent = it.desc + (it.sell ? ` Sells for ${it.sell} gold.` : '');
+    bagUse.style.display = it.heal || it.buff ? 'inline-block' : 'none';
+  } else {
+    bagSel = null;
+    bagName.textContent = 'Select an item';
+    bagDesc.textContent = 'Tap an item to see what it does.';
+    bagUse.style.display = 'none';
+  }
+}
+bagUse.addEventListener('click', () => {
+  if (bagSel) useItem(bagSel);
+  renderBag();
+});
+
+// ----- Toko -----
+const shopEl = document.getElementById('shop');
+const shopList = document.getElementById('shopList');
+const shopGold = document.getElementById('shopGold');
+const tabBuy = document.getElementById('tabBuy');
+const tabSell = document.getElementById('tabSell');
+let shopTab = 'buy';
+const updateUiOpen = () => (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open'));
+
+function renderShop() {
+  shopGold.textContent = '🪙 ' + save.gold;
+  tabBuy.classList.toggle('on', shopTab === 'buy');
+  tabSell.classList.toggle('on', shopTab === 'sell');
+  shopList.innerHTML = '';
+  const addRow = (id, sub, label, enabled, fn) => {
+    const it = ITEMS[id];
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="ri">${it.icon}</div><div class="rt">${it.name}<small>${sub}</small></div>`;
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.disabled = !enabled;
+    btn.addEventListener('click', fn);
+    row.appendChild(btn);
+    shopList.appendChild(row);
+  };
+  if (shopTab === 'buy') {
+    for (const id of SHOP) {
+      const it = ITEMS[id];
+      addRow(id, `${it.desc} (you have ${invCount(id)})`, `Buy ${it.buy} 🪙`, save.gold >= it.buy, () => {
+        if (save.gold < it.buy) return;
+        save.gold -= it.buy;
+        addItem(id);
+        persist();
+        popText(`+1 ${it.name}`, '#bff4ff');
+        renderShop();
+      });
+    }
+  } else {
+    const sellable = Object.keys(save.inv).filter((id) => ITEMS[id] && ITEMS[id].sell);
+    if (!sellable.length) {
+      shopList.innerHTML = '<div class="empty-note">You have nothing to sell yet. Hunt monsters for materials!</div>';
+    }
+    for (const id of sellable) {
+      const it = ITEMS[id];
+      addRow(id, `you have ${invCount(id)}`, `Sell ${it.sell} 🪙`, true, () => {
+        if (invCount(id) <= 0) return;
+        removeItem(id);
+        save.gold += it.sell;
+        persist();
+        popText(`+${it.sell} 🪙`, '#ffe08a');
+        renderShop();
+      });
+    }
+  }
+}
+function openShop() {
+  bagEl.classList.remove('open');
+  shopEl.classList.add('open');
+  updateUiOpen();
+  renderShop();
+}
+function openBag() {
+  shopEl.classList.remove('open');
+  bagEl.classList.add('open');
+  updateUiOpen();
+  renderBag();
+}
+function closeUi() {
+  bagEl.classList.remove('open');
+  shopEl.classList.remove('open');
+  updateUiOpen();
+}
+function toggleBag() {
+  if (bagEl.classList.contains('open')) closeUi();
+  else if (state.hp > 0 && !talk) openBag();
+}
+document.getElementById('btnBag').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  toggleBag();
+});
+document.getElementById('bagClose').addEventListener('click', closeUi);
+document.getElementById('shopClose').addEventListener('click', closeUi);
+for (const p of [bagEl, shopEl]) p.addEventListener('pointerdown', (e) => e.target === p && closeUi());
+tabBuy.addEventListener('click', () => ((shopTab = 'buy'), renderShop()));
+tabSell.addEventListener('click', () => ((shopTab = 'sell'), renderShop()));
+
+// ----- Loot di dunia -----
+const lootGroup = new THREE.Group();
+scene.add(lootGroup);
+const pickups = [];
+const beamGeo = new THREE.CylinderGeometry(0.28, 0.28, 2.4, 10, 1, true);
+beamGeo.translate(0, 1.2, 0);
+
+function pickupVisual(id) {
+  const g = new THREE.Group();
+  const glow = id === 'gold' ? 0xffd36b : ITEMS[id].glow;
+  const src = lootModels[LOOT_MODELS[id]];
+  let body;
+  if (src) {
+    body = src.clone();
+    body.scale.setScalar(id === 'gold' ? 2.2 : 1.3);
+  } else {
+    body = new THREE.Mesh(
+      id === 'root_fiber' ? new THREE.ConeGeometry(0.2, 0.7, 5) : new THREE.OctahedronGeometry(0.25, 0),
+      new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: 0.7 })
+    );
+    body.position.y = 0.3;
+  }
+  g.add(body);
+  g.add(
+    new THREE.Mesh(
+      beamGeo,
+      new THREE.MeshBasicMaterial({ color: glow, transparent: true, opacity: 0.28, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+    )
+  );
+  g.userData.body = body;
+  return g;
+}
+function spawnPickup(id, n, x, z) {
+  const g = pickupVisual(id);
+  g.position.set(x, 0.4, z);
+  lootGroup.add(g);
+  const a = Math.random() * TAU;
+  pickups.push({ g, id, n, x, z, y: 0.4, vx: Math.cos(a) * 2.2, vz: Math.sin(a) * 2.2, vy: 4 + Math.random() * 1.5, age: 0, landed: false });
+}
+function dropLoot(table, x, z) {
+  for (const e of LOOT[table] || []) {
+    if (Math.random() > e.chance) continue;
+    const n = e.min ? e.min + Math.floor(Math.random() * (e.max - e.min + 1)) : 1;
+    spawnPickup(e.id, n, x, z);
+  }
+}
+function clearPickups() {
+  for (const p of pickups.splice(0)) lootGroup.remove(p.g);
+}
+function updatePickups(dt) {
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const p = pickups[i];
+    p.age += dt;
+    if (!p.landed) {
+      p.x = clamp(p.x + p.vx * dt, -ARENA, ARENA);
+      p.z = clamp(p.z + p.vz * dt, -ARENA, ARENA);
+      p.vy -= 14 * dt;
+      p.y += p.vy * dt;
+      if (p.y <= 0.05) {
+        p.y = 0.05;
+        p.landed = true;
+      }
+    }
+    const dx = player.position.x - p.x;
+    const dz = player.position.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (p.landed && p.id === 'gold' && d < 4 && state.hp > 0) {
+      // koin tertarik ke pemain
+      p.x += (dx / d) * 7 * dt;
+      p.z += (dz / d) * 7 * dt;
+    }
+    p.g.position.set(p.x, p.y + (p.landed ? 0.18 + Math.sin(p.age * 3 + i) * 0.1 : 0), p.z);
+    p.g.userData.body.rotation.y += dt * 1.8;
+    p.g.visible = p.age < 80 || Math.floor(p.age * 6) % 2 === 0; // berkedip sebelum hilang
+    if (p.age > 90) {
+      lootGroup.remove(p.g);
+      pickups.splice(i, 1);
+      continue;
+    }
+    if (p.age > 0.5 && d < 1.4 && state.hp > 0) {
+      lootGroup.remove(p.g);
+      pickups.splice(i, 1);
+      if (p.id === 'gold') {
+        save.gold += p.n;
+        persist();
+        popText(`+${p.n} 🪙`, '#ffe08a');
+      } else {
+        addItem(p.id, p.n);
+        popText(`+${p.n > 1 ? p.n + ' ' : ''}${ITEMS[p.id].name}`, '#bff4ff');
+      }
+      if (bagEl.classList.contains('open')) renderBag();
+    }
+  }
 }
 
 // Dorong titik keluar dari bangunan / pagar / kristal (lingkaran vs kotak)
@@ -1332,19 +1676,33 @@ function updateHud() {
         ? `Root Warden's Lair — Shards ${save.shards.length}/4`
         : `Dungeon — Kills: ${state.kills} · Shards ${save.shards.length}/4 · gold portal = village · green door (east) = Root Warden`;
   updateSkillUi();
+  goldEl.textContent = save.gold;
+  const bf = [];
+  if (state.buffs.speed > 0) bf.push(`⚡ ${Math.ceil(state.buffs.speed)}s`);
+  if (state.buffs.power > 0) bf.push(`🔥 ${Math.ceil(state.buffs.power)}s`);
+  buffsEl.textContent = bf.join('   ');
+  for (const q of QUICK) {
+    const c = invCount(q.id);
+    q.cEl.textContent = c;
+    q.el.classList.toggle('empty', c === 0);
+    q.cdEl.style.transform = `scaleY(${state.potionCd / 1.2})`;
+  }
 }
 
 // ---------- Loop ----------
 const clock = new THREE.Clock();
 
 function tick() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = uiOpen ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.05); // game berhenti saat tas / toko terbuka
   const alive = state.hp > 0;
 
   for (const sk of Object.values(SKILLS)) sk.t = Math.max(0, sk.t - dt);
   state.attackCooldown = Math.max(0, state.attackCooldown - dt);
   state.skillLock = Math.max(0, state.skillLock - dt);
   state.invuln = Math.max(0, state.invuln - dt);
+  state.potionCd = Math.max(0, state.potionCd - dt);
+  state.buffs.speed = Math.max(0, state.buffs.speed - dt);
+  state.buffs.power = Math.max(0, state.buffs.power - dt);
 
   if (keys.has('KeyQ')) camYaw += 1.8 * dt;
   if (keys.has('KeyE')) camYaw -= 1.8 * dt;
@@ -1365,7 +1723,7 @@ function tick() {
       if (state.dash.t <= 0) state.dash = null;
     } else if (moving) {
       const slow = state.skillLock > 0 ? 0.2 : playerActor.lock > 0 ? 0.5 : 1;
-      player.position.addScaledVector(dir, state.speed * mag * slow * dt);
+      player.position.addScaledVector(dir, state.speed * (state.buffs.speed > 0 ? 1.4 : 1) * mag * slow * dt);
       if (state.skillLock <= 0) {
         const targetYaw = Math.atan2(dir.x, dir.z);
         player.rotation.y = lerpAngle(player.rotation.y, targetYaw, 1 - Math.exp(-18 * dt));
@@ -1469,6 +1827,7 @@ function tick() {
     updateBossFx(dt);
     bossExit.rotation.y += dt;
   }
+  updatePickups(dt);
   sun.target.position.copy(player.position);
   sun.position.copy(player.position).add(SUN_OFFSET);
 
