@@ -11,6 +11,9 @@ const WALL_H = 3.0; // tinggi dinding modular (atap dipasang di sini)
 
 // Tata letak rumah. rot: 0 = pintu menghadap +z, PI = -z, PI/2 = +x, -PI/2 = -x.
 // nw = lebar (modul 2 unit), nd = kedalaman (modul 2 unit), t = jenis dinding.
+// Rumah yang bisa dimasuki (indeks di HOUSES -> interior)
+const SHOP_HOUSES = { 2: { id: 'smithy', name: 'Blacksmith' }, 3: { id: 'store', name: 'General Store' } };
+
 const HOUSES = [
   { x: -22, z: -8, rot: Math.PI / 2, nw: 3, nd: 3, t: 'Plaster' },
   { x: -22, z: 11, rot: Math.PI / 2, nw: 4, nd: 4, t: 'UnevenBrick' },
@@ -40,19 +43,45 @@ export const NPCS = [
     id: 'smith',
     name: 'Blacksmith',
     model: 'Barbarian', items: { r: 'axe_1handed' },
-    x: 8, z: 5, face: -Math.PI / 2,
-    lines: [
-      'That sword is still good. But the bones in the dungeon grow harder every day.',
-      'Bring me a crystal shard someday. I have no idea what it will do to the metal it touches.',
-    ],
+    shop: 'gear',
+    zone: 'smithy',
+    x: 2.6, z: -3.3, face: 0,
+    lines: ['Weapons and armor, forged right here.'],
   },
   {
     id: 'merchant',
     name: 'Merchant',
     model: 'Rogue_Hooded', items: {},
-    shop: true,
-    x: 10.5, z: -1.2, face: -Math.PI / 2,
+    shop: 'items',
+    zone: 'store',
+    x: 0, z: -3.3, face: 0,
     lines: ['Potions, elixirs, anything a hunter needs.'],
+  },
+  // Warga yang berjalan di sekitar desa (path = titik tujuan bergantian)
+  {
+    id: 'v1', name: 'Villager', model: 'Rogue', items: {}, speed: 1.3,
+    x: 9.5, z: 0, face: 0,
+    path: [[0, 9.5], [6.7, 6.7], [9.5, 0], [6.7, -6.7], [0, -9.5], [-6.7, -6.7], [-9.5, 0], [-6.7, 6.7]].reverse(),
+    lines: ['The crystal hums louder every night. I can hardly sleep.', 'My brother went into the forest last winter. I still keep his supper warm.'],
+  },
+  {
+    id: 'v2', name: 'Farmer', model: 'Barbarian', items: {}, speed: 1.1,
+    x: -13, z: 15, face: Math.PI / 2,
+    path: [[-13, 15], [13, 15]],
+    lines: ['The fields are dying. Nothing grows near the crystal anymore.', 'Strange how the crows left first.'],
+  },
+  {
+    id: 'v3', name: 'Traveler', model: 'Ranger', items: {}, speed: 1.4,
+    x: -16, z: -13, face: 0,
+    path: [[-16, -13], [-11, -13], [-11, -5], [-16, -5]],
+    lines: ['I came looking for shelter. This place is not what the maps promised.', 'They say a hero is on the way. I hope it is true.'],
+  },
+  {
+    id: 'v4', name: 'Villager', model: 'Mage', items: {}, speed: 1.2,
+    look: { headMesh: 'Mage_Head', hide: ['Mage_Hat'], hair: 0x5a3a22, scale: 0.95 },
+    x: 14, z: 4, face: 0,
+    path: [[14, 4], [14, 16]],
+    lines: ['Good day! Be careful out past the gate.', 'The merchant and the smith are open every day, even now.'],
   },
   {
     id: 'guard',
@@ -143,6 +172,27 @@ export async function buildVillage(onProgress) {
     return o;
   };
 
+  const shops = [];
+  function makeSign(text) {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#4a2f18';
+    g.fillRect(0, 0, 512, 128);
+    g.strokeStyle = '#d9b36a';
+    g.lineWidth = 8;
+    g.strokeRect(6, 6, 500, 116);
+    g.font = 'bold 56px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#ffe9a8';
+    g.fillText(text, 256, 68);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.55), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+    return m;
+  }
   const addRect = (cx, cz, hx, hz) => colliders.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz });
 
   // ---------- Tanah, jalan, plaza ----------
@@ -225,7 +275,7 @@ export async function buildVillage(onProgress) {
   }
 
   // ---------- Rumah ----------
-  function buildHouse(h) {
+  function buildHouse(h, idx) {
     const W = h.nw * 2;
     const D = h.nd * 2;
     const house = new THREE.Group();
@@ -295,8 +345,28 @@ export async function buildVillage(onProgress) {
 
     const swap = Math.abs(Math.sin(h.rot)) > 0.5;
     addRect(h.x, h.z, (swap ? D : W) / 2 + 0.5, (swap ? W : D) / 2 + 0.5);
+
+    const shop = SHOP_HOUSES[idx];
+    if (shop) {
+      const ox = (doorIdx - (h.nw - 1) / 2) * 2;
+      const toWorld = (lx, lz) => ({
+        x: h.x + lx * Math.cos(h.rot) + lz * Math.sin(h.rot),
+        z: h.z - lx * Math.sin(h.rot) + lz * Math.cos(h.rot),
+      });
+      const trig = toWorld(ox, D / 2 + 1.0);
+      const out = toWorld(ox, D / 2 + 2.8);
+      shops.push({ id: shop.id, x: trig.x, z: trig.z, r: 1.5, out: { x: out.x, z: out.z, rot: h.rot } });
+      const sign = makeSign(shop.name);
+      sign.position.set(ox + 1.9, 2.0, D / 2 + 0.9);
+      house.add(sign);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.3, 0.12), new THREE.MeshStandardMaterial({ color: 0x4a2f18 }));
+      post.position.set(ox + 1.9, 1.15, D / 2 + 0.85);
+      house.add(post);
+      // jalan setapak dari jalan utama ke pintu
+      path(out.x, out.z, 4.5, 4.5);
+    }
   }
-  HOUSES.forEach(buildHouse);
+  HOUSES.forEach((h, i) => buildHouse(h, i));
 
   // ---------- Kristal Inti (pusat plaza) ----------
   const crystal = new THREE.Group();
@@ -424,6 +494,7 @@ export async function buildVillage(onProgress) {
     group,
     colliders,
     gate: { x: 0, z: GZ - 0.8, r: 1.6 },
+    shops,
     spawn: { x: 0, z: -30 },
     update(t) {
       for (const fn of animated) fn(t);

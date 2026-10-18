@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.js';
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
+import { buildInterior, INTERIOR_HALF } from './interiors.js';
 import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES } from './items.js';
 
 const hpEl = document.getElementById('hp');
@@ -197,6 +198,14 @@ try {
   throw err;
 }
 scene.add(village.group);
+
+// Interior toko (Blacksmith dan General Store)
+const interiors = { smithy: buildInterior('smithy'), store: buildInterior('store') };
+for (const it of Object.values(interiors)) {
+  it.group.visible = false;
+  scene.add(it.group);
+}
+const INDOOR = new Set(['smithy', 'store']);
 
 setStage('Lighting the dungeon torches...');
 try {
@@ -541,12 +550,16 @@ for (const def of NPCS) {
   root.position.set(def.x, 0, def.z);
   root.rotation.y = def.face;
   root.add(makeLabel(def.name));
-  village.group.add(root);
+  const nz = def.zone || 'village';
+  (nz === 'village' ? village.group : interiors[nz].group).add(root);
   const actor = makeActor(model);
   play(actor, 'Idle_A', { fade: 0 });
   actor.mixer.update(Math.random() * 2);
-  npcs.push({ def, root, actor });
-  village.colliders.push({ x0: def.x - 0.5, x1: def.x + 0.5, z0: def.z - 0.5, z1: def.z + 0.5 });
+  npcs.push({ def, root, actor, zone: nz, wp: 1, wait: Math.random() * 2 });
+  if (!def.path) {
+    // NPC yang diam menghalangi jalan; yang berjalan tidak
+    (nz === 'village' ? village : interiors[nz]).colliders.push({ x0: def.x - 0.5, x1: def.x + 0.5, z0: def.z - 0.5, z1: def.z + 0.5 });
+  }
 }
 
 // Dialog: tombol Bicara / F untuk mulai dan lanjut
@@ -560,6 +573,7 @@ function nearestNpc(range) {
   let best = null;
   let bd = range;
   for (const n of npcs) {
+    if (n.zone !== zone) continue;
     const d = Math.hypot(n.root.position.x - player.position.x, n.root.position.z - player.position.z);
     if (d < bd) {
       bd = d;
@@ -578,7 +592,7 @@ function closeDialog() {
   dialogEl.style.display = 'none';
 }
 function interact() {
-  if (uiOpen || zone !== 'village' || state.hp <= 0) return;
+  if (uiOpen || !(zone === 'village' || INDOOR.has(zone)) || state.hp <= 0) return;
   if (talk) {
     talk.i++;
     if (talk.i >= talk.npc.def.lines.length) closeDialog();
@@ -588,11 +602,11 @@ function interact() {
   const n = nearestNpc(3.2);
   if (!n) return;
   if (n.def.shop) {
-    openShop();
+    openShop(n.def.shop);
     return;
   }
   talk = { npc: n, i: 0 };
-  // NPC menoleh ke pemain
+  // NPC menoleh ke pemain (dan berhenti berjalan selama bicara)
   n.root.rotation.y = Math.atan2(player.position.x - n.root.position.x, player.position.z - n.root.position.z);
   showLine();
 }
@@ -610,6 +624,8 @@ let zone = 'village';
 const ZONES = {
   village: { bg: 0x7b8fb5, fogNear: 50, fogFar: 120, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
   arena: { bg: 0x0d0e14, fogNear: 30, fogFar: 85, sky: 0x8fa0d8, ground: 0x2a1c14, hemi: 0.7, sunColor: 0x9fb4ff, sun: 0.6 },
+  smithy: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xffe0c0, ground: 0x3a2a1a, hemi: 0.75, sunColor: 0xffd6a0, sun: 0.15 },
+  store: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xfff0d8, ground: 0x4a3a2a, hemi: 0.95, sunColor: 0xffd6a0, sun: 0.15 },
   boss: { bg: 0x07100a, fogNear: 22, fogFar: 70, sky: 0x9fe0a8, ground: 0x1a2a14, hemi: 0.6, sunColor: 0xb0ffc8, sun: 0.35 },
 };
 // Titik muncul: 'zona tujuan:asal'
@@ -619,10 +635,14 @@ const SPAWNS = {
   'arena:village': { x: 0, z: -30, rot: 0 },
   'arena:boss': { x: 32, z: 0, rot: -Math.PI / 2 },
   'boss:arena': { x: 0, z: -14, rot: 0 },
+  'smithy:village': interiors.smithy.spawn,
+  'store:village': interiors.store.spawn,
+  'village:smithy': village.shops.find((s) => s.id === 'smithy').out,
+  'village:store': village.shops.find((s) => s.id === 'store').out,
 };
 function setZone(name, from = 'start') {
   zone = name;
-  ARENA = name === 'boss' ? BOSS_PLAY : 38;
+  ARENA = name === 'boss' ? BOSS_PLAY : INDOOR.has(name) ? INTERIOR_HALF : 38;
   const z = ZONES[name];
   scene.background.setHex(z.bg);
   scene.fog.color.setHex(z.bg);
@@ -636,6 +656,8 @@ function setZone(name, from = 'start') {
   village.group.visible = name === 'village';
   arenaGroup.visible = name === 'arena';
   bossGroup.visible = name === 'boss';
+  interiors.smithy.group.visible = name === 'smithy';
+  interiors.store.group.visible = name === 'store';
 
   for (const e of enemies) {
     e.root.parent?.remove(e.root);
@@ -1607,7 +1629,7 @@ function useItem(id) {
   }
   if (state.potionCd > 0) return false;
   if (it.use === 'bomb') {
-    if (zone === 'village') {
+    if (zone === 'village' || INDOOR.has(zone)) {
       popText("Can't use that in the village", '#ffd0d0');
       return false;
     }
@@ -1616,7 +1638,7 @@ function useItem(id) {
     shake = Math.max(shake, 0.35);
     popText('BOOM!', '#ffae4a');
   } else if (it.use === 'return') {
-    if (zone === 'village') {
+    if (zone === 'village' || INDOOR.has(zone)) {
       popText("You're already in the village", '#ffd0d0');
       return false;
     }
@@ -1763,10 +1785,13 @@ const tabBuy = document.getElementById('tabBuy');
 const tabSell = document.getElementById('tabSell');
 const tabGear = document.getElementById('tabGear');
 let shopTab = 'buy';
+let shopKind = 'items';
 const updateUiOpen = () => (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open'));
 
 function renderShop() {
   shopGold.textContent = '🪙 ' + save.gold;
+  tabBuy.style.display = shopKind === 'items' ? '' : 'none';
+  tabGear.style.display = shopKind === 'gear' ? '' : 'none';
   tabBuy.classList.toggle('on', shopTab === 'buy');
   tabGear.classList.toggle('on', shopTab === 'gear');
   tabSell.classList.toggle('on', shopTab === 'sell');
@@ -1814,7 +1839,10 @@ function renderShop() {
     }
   }
 }
-function openShop() {
+function openShop(kind = 'items') {
+  shopKind = kind;
+  document.getElementById('shopTitle').textContent = kind === 'gear' ? 'Blacksmith' : 'General Store';
+  shopTab = kind === 'gear' ? 'gear' : 'buy';
   bagEl.classList.remove('open');
   shopEl.classList.add('open');
   updateUiOpen();
@@ -1968,7 +1996,7 @@ function collidePos(pos, r, list) {
     }
   }
 }
-const colliderList = () => (zone === 'village' ? village.colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
+const colliderList = () => (zone === 'village' ? village.colliders : INDOOR.has(zone) ? interiors[zone].colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
 
 // ---------- HUD ----------
 const camBtn = document.getElementById('btnCam');
@@ -2002,11 +2030,15 @@ function updateHud() {
   hpEl.classList.toggle('low', state.hp > 0 && state.hp / state.maxHp < 0.3);
   hpTextEl.textContent = `${Math.ceil(state.hp)} / ${state.maxHp}`;
   deathEl.classList.toggle('show', state.hp <= 0);
-  const near = zone === 'village' && !talk ? nearestNpc(3.2) : null;
+  const near = (zone === 'village' || INDOOR.has(zone)) && !talk ? nearestNpc(3.2) : null;
   talkBtn.style.display = near ? 'flex' : 'none';
   infoEl.textContent = state.hp <= 0
     ? 'Defeated'
-    : zone === 'village'
+    : zone === 'smithy'
+      ? "Blacksmith's Forge"
+      : zone === 'store'
+      ? 'General Store'
+      : zone === 'village'
       ? `${VILLAGE_NAME} · Shards ${save.shards.length}/4`
       : zone === 'boss'
         ? `Root Warden's Lair · Shards ${save.shards.length}/4`
@@ -2029,6 +2061,35 @@ function updateHud() {
 
 // ---------- Loop ----------
 const clock = new THREE.Clock();
+
+// Warga yang berkeliling desa
+function updateWalker(n, dt) {
+  const path = n.def.path;
+  if (talk && talk.npc === n) {
+    play(n.actor, 'Idle_A');
+    return;
+  }
+  if (n.wait > 0) {
+    n.wait -= dt;
+    play(n.actor, 'Idle_A');
+    return;
+  }
+  const target = path[n.wp % path.length];
+  const dx = target[0] - n.root.position.x;
+  const dz = target[1] - n.root.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.35) {
+    n.wp = (n.wp + 1) % path.length;
+    n.wait = 1.5 + Math.random() * 3;
+    return;
+  }
+  const speed = n.def.speed || 1.2;
+  n.root.position.x += (dx / d) * speed * dt;
+  n.root.position.z += (dz / d) * speed * dt;
+  collidePos(n.root.position, 0.45, village.colliders);
+  n.root.rotation.y = lerpAngle(n.root.rotation.y, Math.atan2(dx, dz), 1 - Math.exp(-8 * dt));
+  play(n.actor, 'Walking_B');
+}
 
 let hudT = 0;
 function tick() {
@@ -2178,11 +2239,26 @@ function tick() {
       setZone('boss', 'arena');
     } else if (zone === 'boss' && Math.hypot(player.position.x - BOSS_EXIT.x, player.position.z - BOSS_EXIT.z) < BOSS_EXIT.r) {
       setZone('arena', 'boss');
+    } else if (zone === 'village') {
+      for (const s of village.shops) {
+        if (Math.hypot(player.position.x - s.x, player.position.z - s.z) < s.r) {
+          setZone(s.id, 'village');
+          break;
+        }
+      }
+    } else if (INDOOR.has(zone)) {
+      const ex = interiors[zone].exit;
+      if (Math.hypot(player.position.x - ex.x, player.position.z - ex.z) < ex.r) setZone('village', zone);
     }
   }
-  if (zone === 'village') {
-    village.update(clock.elapsedTime);
-    for (const n of npcs) updateActor(n.actor, dt);
+  if (zone === 'village' || INDOOR.has(zone)) {
+    if (zone === 'village') village.update(clock.elapsedTime);
+    else interiors[zone].update(clock.elapsedTime);
+    for (const n of npcs) {
+      if (n.zone !== zone) continue;
+      updateActor(n.actor, dt);
+      if (n.def.path) updateWalker(n, dt);
+    }
     if (talk && Math.hypot(talk.npc.root.position.x - player.position.x, talk.npc.root.position.z - player.position.z) > 5.5) closeDialog();
   } else if (zone === 'arena') {
     arenaPortal.rotation.y += dt;
