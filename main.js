@@ -80,9 +80,8 @@ scene.background = new THREE.Color(0x14161c);
 scene.fog = new THREE.Fog(0x14161c, 25, 60);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
@@ -101,6 +100,36 @@ sun.shadow.bias = -0.0005;
 scene.add(sun);
 scene.add(sun.target);
 const SUN_OFFSET = new THREE.Vector3(10, 20, 8);
+
+// ---------- Kualitas grafis (Low / Medium / High), otomatis turun kalau FPS rendah ----------
+const QUALITY = [
+  { name: 'Low', pr: 0.7, shadow: 0 },
+  { name: 'Medium', pr: 1, shadow: 1024 },
+  { name: 'High', pr: Math.min(devicePixelRatio, 2), shadow: 2048 },
+];
+let quality = 1;
+try {
+  const q = parseInt(localStorage.getItem('shardfall_quality'), 10);
+  if (q >= 0 && q <= 2) quality = q;
+} catch (e) {}
+function applyQuality() {
+  const q = QUALITY[quality];
+  renderer.setPixelRatio(q.pr);
+  renderer.setSize(innerWidth, innerHeight);
+  sun.castShadow = q.shadow > 0;
+  if (q.shadow > 0 && sun.shadow.mapSize.x !== q.shadow) {
+    sun.shadow.mapSize.set(q.shadow, q.shadow);
+    if (sun.shadow.map) {
+      sun.shadow.map.dispose();
+      sun.shadow.map = null;
+    }
+  }
+  try {
+    localStorage.setItem('shardfall_quality', quality);
+  } catch (e) {}
+}
+applyQuality();
+
 
 // Arena dungeon (lantai gelap + grid); desa punya tanahnya sendiri
 const arenaGroup = new THREE.Group();
@@ -592,9 +621,27 @@ function setZone(name, from = 'start') {
 let camYaw = Math.PI; // kamera di belakang pemain yang awalnya menghadap +Z
 let camPitch = 0.5;
 let camDist = 9;
+let camGoal = null; // { d, p } saat pindah preset kamera
+const CAM_MODES = [
+  { name: 'Close', d: 9, p: 0.5 },
+  { name: 'Far', d: 17, p: 0.8 },
+  { name: 'Overview', d: 28, p: 1.05 },
+];
+let camMode = 0;
+function setCamMode(i) {
+  camMode = i % CAM_MODES.length;
+  camGoal = { d: CAM_MODES[camMode].d, p: CAM_MODES[camMode].p };
+  toast(`Camera: ${CAM_MODES[camMode].name}`, 1200);
+}
 let shake = 0; // getaran kamera (hantaman boss)
 
 function updateCamera(dt) {
+  if (camGoal) {
+    const k = 1 - Math.pow(0.002, dt);
+    camDist += (camGoal.d - camDist) * k;
+    camPitch += (camGoal.p - camPitch) * k;
+    if (Math.abs(camGoal.d - camDist) < 0.05) camGoal = null;
+  }
   const cp = Math.cos(camPitch);
   const target = new THREE.Vector3(player.position.x, 1.4, player.position.z);
   const desired = new THREE.Vector3(
@@ -626,6 +673,8 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'KeyF') interact();
   if (e.code === 'KeyI') toggleBag();
+  if (e.code === 'KeyC') setCamMode(camMode + 1);
+  if (e.code === 'KeyV') setCamMode(camMode + 1);
   if (e.code === 'Escape') closeUi();
   if (e.code === 'Digit3') quickUse('health_potion');
   if (e.code === 'Digit4') quickUse('greater_potion');
@@ -636,6 +685,31 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('blur', () => keys.clear());
+
+// Pantau FPS: kalau rata-rata rendah, turunkan kualitas otomatis
+let fpsFrames = 0;
+let fpsT = 0;
+function watchFps(rawDt) {
+  if (rawDt > 0.25) return; // abaikan lonjakan (ganti tab, dll.)
+  fpsFrames++;
+  fpsT += rawDt;
+  if (fpsT < 2.5) return;
+  const fps = fpsFrames / fpsT;
+  fpsFrames = 0;
+  fpsT = 0;
+  if (fps < 38 && quality > 0) {
+    quality--;
+    applyQuality();
+    toast(`Low FPS (${Math.round(fps)}) - graphics set to ${QUALITY[quality].name}`, 2200);
+  }
+}
+const qualBtn = document.getElementById('btnQual');
+qualBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  quality = (quality + 1) % 3;
+  applyQuality();
+  toast(`Graphics: ${QUALITY[quality].name}`, 1600);
+});
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -684,9 +758,11 @@ canvas.addEventListener('pointermove', (e) => {
     const before = pinchDist();
     p.x = e.clientX;
     p.y = e.clientY;
-    camDist = clamp(camDist - (pinchDist() - before) * 0.03, 5, 16);
+    camGoal = null;
+    camDist = clamp(camDist - (pinchDist() - before) * 0.03, 5, 34);
   } else {
     camYaw -= (e.clientX - p.x) * 0.006;
+    camGoal = null;
     camPitch = clamp(camPitch + (e.clientY - p.y) * 0.005, 0.2, 1.25);
     p.x = e.clientX;
     p.y = e.clientY;
@@ -701,7 +777,8 @@ addEventListener('pointercancel', endCamPointer);
 canvas.addEventListener(
   'wheel',
   (e) => {
-    camDist = clamp(camDist + e.deltaY * 0.01, 5, 16);
+    camGoal = null;
+    camDist = clamp(camDist + e.deltaY * 0.01, 5, 34);
     e.preventDefault();
   },
   { passive: false }
@@ -1664,6 +1741,11 @@ function collidePos(pos, r, list) {
 const colliderList = () => (zone === 'village' ? village.colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
 
 // ---------- HUD ----------
+const camBtn = document.getElementById('btnCam');
+camBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  setCamMode(camMode + 1);
+});
 const hpTextEl = document.getElementById('hpText');
 const deathEl = document.getElementById('death');
 const helpEl = document.getElementById('help');
@@ -1716,8 +1798,11 @@ function updateHud() {
 // ---------- Loop ----------
 const clock = new THREE.Clock();
 
+let hudT = 0;
 function tick() {
-  const dt = uiOpen ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.05); // game berhenti saat tas / toko terbuka
+  const rawDt = clock.getDelta();
+  watchFps(rawDt);
+  const dt = uiOpen ? 0 : Math.min(rawDt, 0.05); // game berhenti saat tas / toko terbuka
   const alive = state.hp > 0;
 
   for (const sk of Object.values(SKILLS)) sk.t = Math.max(0, sk.t - dt);
@@ -1856,7 +1941,11 @@ function tick() {
   sun.position.copy(player.position).add(SUN_OFFSET);
 
   updateCamera(dt);
-  updateHud();
+  hudT -= rawDt;
+  if (hudT <= 0) {
+    hudT = 0.1;
+    updateHud();
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }

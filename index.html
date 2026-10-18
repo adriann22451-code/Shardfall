@@ -22,6 +22,8 @@
   #help { display: none; opacity: .9; max-width: 260px; line-height: 1.4; font-size: 12px; background: rgba(10,12,24,.8);
     padding: 8px 10px; border-radius: 8px; margin-top: 6px; }
   #help.open { display: block; }
+  #btnCam { right: 76px; top: 66px; width: 50px; height: 50px; font-size: 11px; background: rgba(60,70,110,.7); }
+  #btnQual { right: 118px; top: 24px; width: 34px; height: 34px; font-size: 15px; background: rgba(60,70,110,.7); }
   #btnHelp { right: 76px; top: 24px; width: 34px; height: 34px; font-size: 16px; background: rgba(60,70,110,.7); }
   #death { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
     background: radial-gradient(ellipse at center, rgba(60,0,0,.55), rgba(0,0,0,.88)); color: #fff; opacity: 0; visibility: hidden;
@@ -199,7 +201,7 @@
     <div id="goldRow">🪙 <span id="gold">0</span></div>
     <div id="buffs"></div>
     <div id="info"></div>
-    <div id="help">Controls:<br>WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
+    <div id="help">Controls:<br>WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions · C: camera view · ⚙: graphics<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
   </div>
 
   <div id="controls">
@@ -209,6 +211,8 @@
     <div class="btn" id="btnS1">Leap<small>1</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnDodge">Dodge<small>Shift</small><div class="cd"></div><div class="cdt"></div></div>
     <div class="btn" id="btnHelp">?</div>
+    <div class="btn" id="btnQual">⚙</div>
+    <div class="btn" id="btnCam">Cam<small>C</small></div>
     <div class="btn" id="btnBag">Bag<small>I</small></div>
     <div class="btn" id="btnQ1"><span class="qi">🧪</span><small id="q1c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnQ2"><span class="qi">⚗️</span><small id="q2c">0</small><div class="cd"></div></div>
