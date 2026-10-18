@@ -6,6 +6,7 @@ import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 import { buildInterior, INTERIOR_HALF } from './interiors.js';
 import { buildRegionDecor } from './regiondecor.js';
+import { buildArena } from './arenas.js';
 import { REGIONS, ENDING } from './regions.js';
 import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES, GEAR_FILES } from './items.js';
 
@@ -459,13 +460,16 @@ function spawnEnemy() {
 
   const root = new THREE.Group();
   root.add(model);
-  const angle = Math.random() * TAU;
-  const dist = 18 + Math.random() * 8;
-  root.position.set(
-    clamp(player.position.x + Math.cos(angle) * dist, -ARENA, ARENA),
-    0,
-    clamp(player.position.z + Math.sin(angle) * dist, -ARENA, ARENA)
-  );
+  let sx = 0;
+  let sz = 0;
+  for (let tries = 0; tries < 25; tries++) {
+    const angle = Math.random() * TAU;
+    const dist = 16 + Math.random() * 10;
+    sx = clamp(player.position.x + Math.cos(angle) * dist, -ARENA, ARENA);
+    sz = clamp(player.position.z + Math.sin(angle) * dist, -ARENA, ARENA);
+    if (arenaFree(sx, sz) && Math.hypot(sx - player.position.x, sz - player.position.z) > 12) break;
+  }
+  root.position.set(sx, 0, sz);
   scene.add(root);
 
   const actor = makeActor(model);
@@ -683,22 +687,61 @@ const SPAWNS = {
   'village:smithy': village.shops.find((s) => s.id === 'smithy').out,
   'village:store': village.shops.find((s) => s.id === 'store').out,
 };
-// Dekorasi dungeon sesuai wilayah
+// Tata ruang dungeon + dekorasi sesuai wilayah
+const layoutCache = {};
+let curLayout = null; // null = dungeon bawaan (Root Forest)
 const decorCache = {};
 let curDecor = null;
 let arenaColliders = null;
+const arenaFree = (x, z) => (zone === 'arena' && curLayout ? curLayout.isFree(x, z) : true);
+function placePortals(home, boss) {
+  ARENA_PORTAL.x = home.x;
+  ARENA_PORTAL.z = home.z;
+  arenaPortal.position.set(home.x, 1.6, home.z);
+  arenaPortalLight.position.set(home.x, 2, home.z);
+  BOSS_PORTAL.x = boss.x;
+  BOSS_PORTAL.z = boss.z;
+  bossPortal.position.set(boss.x, 1.6, boss.z);
+  bossPortalLight.position.set(boss.x * 0.97, 2, boss.z);
+  bossPortalLabel.position.set(boss.x, 4.2, boss.z);
+}
+function noTintAll(group) {
+  group.traverse((o) => {
+    if (o.material) for (const mt of Array.isArray(o.material) ? o.material : [o.material]) mt.userData.noTint = true;
+  });
+}
+function applyLayout(R) {
+  let lay = null;
+  if (R.id !== 'root') {
+    if (!layoutCache[R.id]) {
+      const l = buildArena(R.id);
+      noTintAll(l.group);
+      l.group.visible = false;
+      arenaGroup.add(l.group);
+      layoutCache[R.id] = l;
+    }
+    lay = layoutCache[R.id];
+  }
+  for (const l of Object.values(layoutCache)) l.group.visible = l === lay;
+  dungeon.group.visible = !lay;
+  curLayout = lay;
+  const home = lay ? lay.portals.home : { x: 0, z: 36 };
+  const boss = lay ? lay.portals.boss : { x: 36, z: 0 };
+  placePortals(home, boss);
+  SPAWNS['arena:village'] = lay ? lay.spawn : { x: 0, z: -30, rot: 0 };
+  const len = Math.hypot(boss.x, boss.z) || 1;
+  SPAWNS['arena:boss'] = { x: boss.x - (boss.x / len) * 4, z: boss.z - (boss.z / len) * 4, rot: Math.atan2(-boss.x, -boss.z) };
+}
 function applyDecor(R) {
   if (curDecor && curDecor.id !== R.id) arenaGroup.remove(curDecor.group);
   if (!decorCache[R.id]) {
-    const d = buildRegionDecor(R.id);
-    d.group.traverse((o) => {
-      if (o.material) for (const mt of Array.isArray(o.material) ? o.material : [o.material]) mt.userData.noTint = true;
-    });
+    const d = buildRegionDecor(R.id, curLayout ? curLayout.isFree : undefined);
+    noTintAll(d.group);
     decorCache[R.id] = d;
   }
   curDecor = decorCache[R.id];
   arenaGroup.add(curDecor.group);
-  arenaColliders = [...dungeon.colliders, ...curDecor.colliders];
+  arenaColliders = [...(curLayout ? curLayout.colliders : dungeon.colliders), ...curDecor.colliders];
 }
 const tmpTint = new THREE.Color();
 function tintGroup(group, hex, lightHex) {
@@ -722,6 +765,7 @@ function setZone(name, from = 'start') {
   const RG = curRegion();
   const z = name === 'arena' || name === 'boss' ? RG.env[name] : ZONES[name];
   if (name === 'arena') {
+    applyLayout(RG);
     applyDecor(RG);
     tintGroup(arenaGroup, RG.tint.arena, RG.torch);
     relabel(bossPortalLabel, `${RG.boss.name}'s Lair`);
@@ -802,6 +846,22 @@ function updateCamera(dt) {
     // tetap di dalam aula supaya dinding tidak menutupi pandangan
     desired.x = clamp(desired.x, -ARENA - 0.5, ARENA + 0.5);
     desired.z = clamp(desired.z, -ARENA - 0.5, ARENA + 0.5);
+  }
+  if (zone === 'arena' && curLayout && arenaColliders) {
+    // kamera tidak boleh masuk ke dalam dinding / batu
+    for (const c of arenaColliders) {
+      if (desired.x > c.x0 - 0.4 && desired.x < c.x1 + 0.4 && desired.z > c.z0 - 0.4 && desired.z < c.z1 + 0.4) {
+        const dl = desired.x - (c.x0 - 0.4);
+        const dr = c.x1 + 0.4 - desired.x;
+        const dt2 = desired.z - (c.z0 - 0.4);
+        const db = c.z1 + 0.4 - desired.z;
+        const mn = Math.min(dl, dr, dt2, db);
+        if (mn === dl) desired.x = c.x0 - 0.4;
+        else if (mn === dr) desired.x = c.x1 + 0.4;
+        else if (mn === dt2) desired.z = c.z0 - 0.4;
+        else desired.z = c.z1 + 0.4;
+      }
+    }
   }
   camera.position.lerp(desired, 1 - Math.pow(0.0002, dt));
   if (shake > 0) {
@@ -2194,7 +2254,7 @@ function spawnPickup(id, n, x, z) {
   g.position.set(x, 0.4, z);
   lootGroup.add(g);
   const a = Math.random() * TAU;
-  pickups.push({ g, id, n, x, z, y: 0.4, vx: Math.cos(a) * 2.2, vz: Math.sin(a) * 2.2, vy: 4 + Math.random() * 1.5, age: 0, landed: false });
+  pickups.push({ g, id, n, ox: x, oz: z, x, z, y: 0.4, vx: Math.cos(a) * 2.2, vz: Math.sin(a) * 2.2, vy: 4 + Math.random() * 1.5, age: 0, landed: false });
 }
 function dropLoot(table, x, z) {
   const R = curRegion();
@@ -2221,6 +2281,10 @@ function updatePickups(dt) {
       if (p.y <= 0.05) {
         p.y = 0.05;
         p.landed = true;
+        if (!arenaFree(p.x, p.z)) {
+          p.x = p.ox;
+          p.z = p.oz;
+        }
       }
     }
     const dx = player.position.x - p.x;
@@ -2568,7 +2632,8 @@ function tick() {
     bossPortal.material.color.setHex(open ? 0x6bff7a : 0xff4a4a);
     bossPortalLight.color.setHex(open ? 0x6bff7a : 0xff4a4a);
     bossPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3.7) * 6;
-    dungeon.update(clock.elapsedTime);
+    if (curLayout) curLayout.update(clock.elapsedTime);
+    else dungeon.update(clock.elapsedTime);
     if (curDecor) curDecor.update(clock.elapsedTime, dt);
   } else {
     bossRoom.update(clock.elapsedTime, dt);

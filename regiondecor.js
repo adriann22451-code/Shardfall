@@ -7,7 +7,7 @@ const rng = (seed) => {
 };
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
 
-export function buildRegionDecor(id) {
+export function buildRegionDecor(id, isFree = () => true) {
   const group = new THREE.Group();
   const colliders = [];
   const anim = [];
@@ -23,9 +23,10 @@ export function buildRegionDecor(id) {
       const z = R(-edge, edge);
       if (Math.hypot(x, z) < minR) continue;
       if (NO.some(([px, pz]) => Math.hypot(x - px, z - pz) < 7)) continue;
+      if (!isFree(x, z)) continue;
       return [x, z];
     }
-    return [20, 20];
+    return [0, 0.01];
   };
   const inst = (geo, mat, n, place) => {
     const mesh = new THREE.InstancedMesh(geo, mat, n);
