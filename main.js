@@ -6,7 +6,7 @@ import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 import { buildInterior, INTERIOR_HALF } from './interiors.js';
 import { REGIONS, ENDING } from './regions.js';
-import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES } from './items.js';
+import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES, GEAR_FILES } from './items.js';
 
 const hpEl = document.getElementById('hp');
 const infoEl = document.getElementById('info');
@@ -19,7 +19,7 @@ const loadStage = document.getElementById('loadStage');
 const loadTip = document.getElementById('loadTip');
 const BASE_FILES = 9;
 const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size + 1; // +1: kapak dua tangan boss
-const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT + LOOT_FILES.length;
+const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT + LOOT_FILES.length + GEAR_FILES.length;
 let loadDone = 0;
 let loadShown = 0;
 let loadFinished = false;
@@ -245,6 +245,22 @@ try {
 } catch (err) {
   console.error(err);
   loadError('Failed to load loot models.');
+  throw err;
+}
+
+setStage('Sharpening the weapons...');
+const gearModels = {};
+try {
+  const gearLoader = new GLTFLoader().setPath('assets/');
+  await Promise.all(
+    GEAR_FILES.map(async (f) => {
+      gearModels[f] = (await gearLoader.loadAsync(f + '.gltf')).scene;
+      bump();
+    })
+  );
+} catch (err) {
+  console.error(err);
+  loadError('Failed to load weapon models.');
   throw err;
 }
 
@@ -1682,24 +1698,100 @@ function recalcStats() {
   state.speed = 6 * (1 + g.spd);
   state.hp = Math.min(state.hp, state.maxHp);
 }
-const swordBaseScale = swordModel.scale.x || 1;
-function applyWeaponLook() {
-  const it = ITEMS[save.equip.weapon];
-  swordModel.visible = !!it;
-  if (!it) return;
-  swordModel.scale.setScalar(swordBaseScale * (it.scale || 1));
-  swordModel.traverse((o) => {
-    if (!o.isMesh) return;
-    if (!o.userData.own) {
-      o.material = o.material.clone();
-      o.userData.own = true;
-    }
-    if (o.material.emissive) {
-      o.material.emissive.setHex(it.tint || 0x000000);
-      o.material.emissiveIntensity = it.tint ? 0.55 : 0;
-    }
-  });
+// ----- Model senjata / perisai di tangan pemain + ikon 3D untuk inventory -----
+const leftHand = playerModel.getObjectByName('handslot.l');
+let weaponObj = null;
+let shieldObj = null;
+function gearObject(it, scale = it.scale || 1) {
+  const src = gearModels[it.model];
+  if (!src) return null;
+  const o = SkeletonUtils.clone(src);
+  prepareModel(o);
+  o.scale.setScalar(scale);
+  if (it.tint) {
+    o.traverse((c) => {
+      if (c.isMesh && c.material) {
+        c.material = c.material.clone();
+        if (c.material.emissive) {
+          c.material.emissive.setHex(it.tint);
+          c.material.emissiveIntensity = 0.5;
+        }
+      }
+    });
+  }
+  return o;
 }
+function applyWeaponLook() {
+  swordModel.visible = false; // pedang bawaan diganti model dari item
+  if (weaponObj) weaponObj.parent?.remove(weaponObj);
+  if (shieldObj) shieldObj.parent?.remove(shieldObj);
+  weaponObj = shieldObj = null;
+  const w = ITEMS[save.equip.weapon];
+  if (w && rightHand) {
+    weaponObj = gearObject(w);
+    if (weaponObj) rightHand.add(weaponObj);
+  }
+  const s = ITEMS[save.equip.shield];
+  if (s && leftHand) {
+    shieldObj = gearObject(s);
+    if (shieldObj) leftHand.add(shieldObj);
+  }
+}
+const iconCache = {};
+function makeIcons() {
+  const ids = Object.keys(ITEMS).filter((id) => ITEMS[id].model && !iconCache[id]);
+  if (!ids.length) return;
+  let r = null;
+  try {
+    r = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(1);
+    r.setSize(96, 96);
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x8890a0, 1.7));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.8);
+    dl.position.set(2, 3, 5);
+    sc.add(dl);
+    for (const id of ids) {
+      const it = ITEMS[id];
+      const o = gearObject(it, 1);
+      if (!o) continue;
+      const wrap = new THREE.Group();
+      wrap.add(o);
+      const sz = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
+      if (it.slot === 'shield') {
+        // sisi terlebar menghadap kamera
+        if (sz.x <= sz.y && sz.x <= sz.z) o.rotation.y = Math.PI / 2;
+        else if (sz.y <= sz.x && sz.y <= sz.z) o.rotation.x = Math.PI / 2;
+      } else {
+        // sumbu terpanjang jadi tegak, lalu dimiringkan
+        if (sz.x >= sz.y && sz.x >= sz.z) o.rotation.z = Math.PI / 2;
+        else if (sz.z >= sz.x && sz.z >= sz.y) o.rotation.x = Math.PI / 2;
+        wrap.rotation.z = -0.75;
+      }
+      const pivot = new THREE.Group();
+      pivot.add(wrap);
+      sc.add(pivot);
+      pivot.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(pivot);
+      wrap.position.sub(box.getCenter(new THREE.Vector3()));
+      pivot.updateMatrixWorld(true);
+      const size = new THREE.Box3().setFromObject(pivot).getSize(new THREE.Vector3());
+      const half = Math.max(size.x, size.y) * 0.6;
+      const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.1, 50);
+      cam.position.set(0, 0, 10);
+      r.render(sc, cam);
+      iconCache[id] = r.domElement.toDataURL('image/png');
+      sc.remove(pivot);
+    }
+  } catch (e) {
+    console.warn('Icon render failed', e);
+  }
+  if (r) {
+    r.dispose();
+    r.forceContextLoss();
+  }
+}
+const iconHtml = (id) => (iconCache[id] ? `<img src="${iconCache[id]}" alt="">` : ITEMS[id].icon);
 function gainXp(n) {
   if (save.lvl >= MAX_LEVEL) return;
   save.xp += n;
@@ -1866,6 +1958,7 @@ const itemText = (it) => {
   return t;
 };
 function renderBag() {
+  makeIcons();
   bagGold.textContent = '🪙 ' + save.gold;
   const g = gearStats();
   bagStats.innerHTML =
@@ -1878,7 +1971,7 @@ function renderBag() {
     const id = save.equip[s];
     const slot = document.createElement('div');
     slot.className = 'slot' + (id ? ' has' : '') + (bagSel === 'eq:' + s ? ' sel' : '');
-    slot.innerHTML = `<small>${s}</small>${id ? ITEMS[id].icon : '<span style="opacity:.25">' + SLOT_ICON[s] + '</span>'}`;
+    slot.innerHTML = `<small>${s}</small>${id ? iconHtml(id) : '<span style="opacity:.25">' + SLOT_ICON[s] + '</span>'}`;
     if (id) {
       slot.addEventListener('click', () => {
         bagSel = 'eq:' + s;
@@ -1896,7 +1989,7 @@ function renderBag() {
     const slot = document.createElement('div');
     slot.className = 'slot' + (e ? ' has' : '') + (e && e.id === bagSel ? ' sel' : '');
     if (e) {
-      slot.textContent = ITEMS[e.id].icon;
+      slot.innerHTML = iconHtml(e.id);
       if (e.n > 1) {
         const b = document.createElement('b');
         b.textContent = e.n;
@@ -1959,6 +2052,7 @@ const updateUiOpen = () =>
   (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open') || choiceEl.classList.contains('open') || endingEl.classList.contains('open'));
 
 function renderShop() {
+  makeIcons();
   shopGold.textContent = '🪙 ' + save.gold;
   tabBuy.style.display = shopKind === 'items' ? '' : 'none';
   tabGear.style.display = shopKind === 'gear' ? '' : 'none';
@@ -1970,7 +2064,7 @@ function renderShop() {
     const it = ITEMS[id];
     const row = document.createElement('div');
     row.className = 'row';
-    row.innerHTML = `<div class="ri">${it.icon}</div><div class="rt">${it.name}<small>${sub}</small></div>`;
+    row.innerHTML = `<div class="ri">${iconHtml(id)}</div><div class="rt">${it.name}<small>${sub}</small></div>`;
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.disabled = !enabled;

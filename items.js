@@ -20,24 +20,30 @@ Object.assign(ITEMS, {
 
 // Equipment. Slot: weapon, armor, helm, boots, ring.
 // atk = bonus damage (0.3 = +30%), def = defense, hp = max HP, spd = move speed (0.1 = +10%), crit = crit chance
-export const SLOTS = ['weapon', 'armor', 'helm', 'boots', 'ring'];
-export const SLOT_ICON = { weapon: '⚔️', armor: '🛡️', helm: '🪖', boots: '👢', ring: '💍' };
+export const SLOTS = ['weapon', 'shield', 'armor', 'helm', 'boots', 'ring'];
+export const SLOT_ICON = { weapon: '⚔️', shield: '🛡️', armor: '🥋', helm: '🪖', boots: '👢', ring: '💍' };
 const gear = (name, icon, slot, lvl, stats, buy, extra = {}) => ({
   name, icon, kind: 'gear', slot, lvl, ...stats, buy, sell: Math.round(buy * 0.35), glow: extra.glow || 0xbfd0ff, ...extra,
 });
 Object.assign(ITEMS, {
   // Senjata
-  rusty_sword: gear("Traveler's Sword", '🗡️', 'weapon', 1, { atk: 0 }, 10, { desc: 'A plain sword. Reliable, if unremarkable.', sell: 3 }),
-  iron_sword: gear('Iron Sword', '🗡️', 'weapon', 2, { atk: 0.3 }, 90, { desc: 'Solid iron. +30% damage.', tint: 0x8899aa, scale: 1.1 }),
-  steel_blade: gear('Steel Blade', '⚔️', 'weapon', 5, { atk: 0.7 }, 260, { desc: 'Sharp, balanced steel. +70% damage.', tint: 0x4aa8ff, scale: 1.2 }),
-  knight_longsword: gear("Knight's Longsword", '⚔️', 'weapon', 8, { atk: 1.2, crit: 0.05 }, 600, { desc: '+120% damage, +5% crit chance.', tint: 0xffd36b, scale: 1.35 }),
-  root_blade: gear('Rootbound Blade', '🌿', 'weapon', 3, { atk: 0.9, crit: 0.05 }, 300, { desc: "Forged from the Root Warden's heartwood. +90% damage, +5% crit.", tint: 0x4dff7a, scale: 1.25, glow: 0x6bff9a }),
+  rusty_sword: gear("Traveler's Sword", '🗡️', 'weapon', 1, { atk: 0 }, 10, { desc: 'A plain sword. Reliable, if unremarkable.', sell: 3, model: 'sword_1handed' }),
+  iron_sword: gear('Iron Sword', '🗡️', 'weapon', 2, { atk: 0.3 }, 90, { desc: 'Solid iron. +30% damage.', tint: 0x8899aa, scale: 1.1, model: 'sword_1handed' }),
+  steel_blade: gear('Steel Hatchet', '🪓', 'weapon', 5, { atk: 0.7 }, 260, { desc: 'Sharp, balanced steel. +70% damage.', tint: 0x4aa8ff, scale: 1.15, model: 'axe_1handed' }),
+  knight_longsword: gear("Knight's Longsword", '⚔️', 'weapon', 8, { atk: 1.2, crit: 0.05 }, 600, { desc: '+120% damage, +5% crit chance.', tint: 0xffd36b, scale: 0.9, model: 'sword_2handed' }),
+  root_blade: gear('Rootbound Dagger', '🌿', 'weapon', 3, { atk: 0.9, crit: 0.05 }, 300, { desc: "Carved from the Root Warden's heartwood. +90% damage, +5% crit.", tint: 0x4dff7a, scale: 1.5, glow: 0x6bff9a, model: 'dagger' }),
+  // Perisai (tangan kiri)
+  wood_shield: gear('Wooden Shield', '🛡️', 'shield', 1, { def: 3 }, 80, { desc: 'Splintered but sturdy. +3 defense.', model: 'shield_round' }),
+  buckler: gear('Iron Buckler', '🛡️', 'shield', 3, { def: 5, hp: 5 }, 160, { desc: '+5 defense, +5 max HP.', model: 'shield_round_barbarian' }),
+  spiked_shield: gear('Spiked Shield', '🛡️', 'shield', 5, { def: 6, atk: 0.1 }, 280, { desc: '+6 defense, +10% damage.', model: 'shield_spikes' }),
+  knight_shield: gear("Knight's Shield", '🛡️', 'shield', 8, { def: 9, hp: 15 }, 520, { desc: '+9 defense, +15 max HP.', model: 'shield_square' }),
+  badge_shield: gear('Crest Shield', '🛡️', 'shield', 11, { def: 14, hp: 25 }, 900, { desc: '+14 defense, +25 max HP.', model: 'shield_badge' }),
   // Boss region 2-4
-  ember_blade: gear('Emberforged Blade', '🔥', 'weapon', 6, { atk: 1.1, crit: 0.06 }, 520, { desc: 'Still hot to the touch. +110% damage, +6% crit.', tint: 0xff6a2a, scale: 1.3, glow: 0xff7a2a }),
+  ember_blade: gear('Emberforged Greatsword', '🔥', 'weapon', 6, { atk: 1.1, crit: 0.06 }, 520, { desc: 'Still hot to the touch. +110% damage, +6% crit.', tint: 0xff6a2a, scale: 0.95, glow: 0xff7a2a, model: 'sword_2handed' }),
   ember_plate: gear('Emberforged Plate', '🔥', 'armor', 6, { def: 11, hp: 25 }, 480, { desc: '+11 defense, +25 max HP.', glow: 0xff7a2a }),
-  frost_edge: gear('Frostbrand', '❄️', 'weapon', 9, { atk: 1.6, crit: 0.06 }, 800, { desc: 'Rimed with eternal frost. +160% damage, +6% crit.', tint: 0x7fdcff, scale: 1.35, glow: 0x9fe8ff }),
+  frost_edge: gear('Frostbrand', '❄️', 'weapon', 9, { atk: 1.6, crit: 0.06 }, 800, { desc: 'Rimed with eternal frost. +160% damage, +6% crit.', tint: 0x7fdcff, scale: 1.05, glow: 0x9fe8ff, model: 'sword_2handed' }),
   frost_mail: gear('Frostwoven Mail', '❄️', 'armor', 9, { def: 16, hp: 35 }, 760, { desc: '+16 defense, +35 max HP.', glow: 0x9fe8ff }),
-  hollow_blade: gear('Hollow Blade', '🔮', 'weapon', 12, { atk: 2.3, crit: 0.1 }, 1200, { desc: 'It cuts more than flesh. +230% damage, +10% crit.', tint: 0xb07aff, scale: 1.45, glow: 0xb07aff }),
+  hollow_blade: gear('Hollow Greataxe', '🔮', 'weapon', 12, { atk: 2.3, crit: 0.1 }, 1200, { desc: 'It cuts more than flesh. +230% damage, +10% crit.', tint: 0xb07aff, scale: 0.9, glow: 0xb07aff, model: 'axe_2handed' }),
   hollow_plate: gear('Hollow Plate', '🔮', 'armor', 12, { def: 22, hp: 50 }, 1100, { desc: '+22 defense, +50 max HP.', glow: 0xb07aff }),
   // Armor
   leather_armor: gear('Leather Armor', '🥋', 'armor', 1, { def: 3 }, 70, { desc: 'Light and flexible. +3 defense.' }),
@@ -60,6 +66,7 @@ Object.assign(ITEMS, {
 export const SHOP = ['health_potion', 'greater_potion', 'speed_elixir', 'power_elixir', 'bomb', 'return_scroll'];
 export const SHOP_GEAR = [
   'iron_sword', 'steel_blade', 'knight_longsword',
+  'wood_shield', 'buckler', 'spiked_shield', 'knight_shield', 'badge_shield',
   'leather_armor', 'chain_mail', 'plate_armor',
   'leather_cap', 'iron_helm', 'knight_helm',
   'worn_boots', 'swift_boots',
@@ -110,3 +117,6 @@ export const LOOT_MODELS = {
   gold: 'coin',
 };
 export const LOOT_FILES = [...new Set(Object.values(LOOT_MODELS))];
+
+// Model 3D senjata / perisai yang dibutuhkan (assets/*.gltf)
+export const GEAR_FILES = [...new Set(Object.values(ITEMS).map((i) => i.model).filter(Boolean))];
