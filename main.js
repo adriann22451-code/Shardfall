@@ -5,6 +5,8 @@ import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.j
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 import { buildInterior, INTERIOR_HALF } from './interiors.js';
+import { buildScenery } from './scenery.js';
+import { buildCastleHall } from './castlehall.js';
 import { buildRegionDecor } from './regiondecor.js';
 import { buildArena } from './arenas.js';
 import { REGIONS, ENDING } from './regions.js';
@@ -83,7 +85,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x14161c);
 scene.fog = new THREE.Fog(0x14161c, 25, 60);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 900);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -203,14 +205,18 @@ try {
   throw err;
 }
 scene.add(village.group);
+// Hutan, gunung, langit, dan kastil kerajaan di sekitar desa
+const scenery = buildScenery(village.colliders, village.shops);
+village.group.add(scenery.group);
+village.colliders.push(...scenery.colliders);
 
 // Interior toko (Blacksmith dan General Store)
-const interiors = { smithy: buildInterior('smithy'), store: buildInterior('store') };
+const interiors = { smithy: buildInterior('smithy'), store: buildInterior('store'), castle: buildCastleHall() };
 for (const it of Object.values(interiors)) {
   it.group.visible = false;
   scene.add(it.group);
 }
-const INDOOR = new Set(['smithy', 'store']);
+const INDOOR = new Set(['smithy', 'store', 'castle']);
 
 setStage('Lighting the dungeon torches...');
 try {
@@ -571,6 +577,31 @@ function applyLook(model, look) {
       attach(new THREE.Mesh(new THREE.ConeGeometry(sz.x * 0.3, sz.y * 0.5, 4), mat), c.x, box.min.y - sz.y * 0.08, box.max.z - sz.z * 0.12, true);
     }
   }
+  if (look.crown) {
+    const head = model.getObjectByName('head');
+    const hm = look.headMesh && model.getObjectByName(look.headMesh);
+    if (head && hm) {
+      const box = new THREE.Box3().setFromObject(hm);
+      const c = box.getCenter(new THREE.Vector3());
+      const sz = box.getSize(new THREE.Vector3());
+      const ws = head.getWorldScale(new THREE.Vector3()).x || 1;
+      const mat = new THREE.MeshStandardMaterial({ color: 0xf0c040, roughness: 0.35, metalness: 0.8 });
+      const crown = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(sz.x * 0.58, sz.x * 0.58, sz.y * 0.16, 10), mat);
+      crown.add(ring);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(sz.x * 0.1, sz.y * 0.3, 4), mat);
+        sp.position.set(Math.cos(a) * sz.x * 0.5, sz.y * 0.22, Math.sin(a) * sz.x * 0.5);
+        crown.add(sp);
+      }
+      const local = head.worldToLocal(new THREE.Vector3(c.x, box.max.y + sz.y * 0.02, c.z));
+      crown.position.copy(local);
+      crown.quaternion.copy(head.getWorldQuaternion(new THREE.Quaternion()).invert());
+      crown.scale.setScalar(1 / ws);
+      head.add(crown);
+    }
+  }
   if (look.scale) model.scale.multiplyScalar(look.scale);
   if (look.lean) model.rotation.x = look.lean;
 }
@@ -653,6 +684,7 @@ function interact() {
   }
   talk = { npc: n, i: 0 };
   if (n.def.id === 'elder') Object.assign(talk, elderTalk());
+  else if (n.def.id === 'king') Object.assign(talk, kingTalk());
   // NPC menoleh ke pemain (dan berhenti berjalan selama bicara)
   n.root.rotation.y = Math.atan2(player.position.x - n.root.position.x, player.position.z - n.root.position.z);
   showLine();
@@ -669,10 +701,11 @@ dialogEl.addEventListener('pointerdown', (e) => {
 // ---------- Zona: desa (aman) dan arena dungeon ----------
 let zone = 'village';
 const ZONES = {
-  village: { bg: 0x7b8fb5, fogNear: 50, fogFar: 120, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
+  village: { bg: 0xcfe0f2, fogNear: 90, fogFar: 330, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
   arena: { bg: 0x0d0e14, fogNear: 30, fogFar: 85, sky: 0x8fa0d8, ground: 0x2a1c14, hemi: 0.7, sunColor: 0x9fb4ff, sun: 0.6 },
   smithy: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xffe0c0, ground: 0x3a2a1a, hemi: 0.75, sunColor: 0xffd6a0, sun: 0.15 },
   store: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xfff0d8, ground: 0x4a3a2a, hemi: 0.95, sunColor: 0xffd6a0, sun: 0.15 },
+  castle: { bg: 0x1a1612, fogNear: 30, fogFar: 90, sky: 0xfff0d8, ground: 0x5a4a3a, hemi: 1.0, sunColor: 0xffe0b0, sun: 0.15 },
   boss: { bg: 0x07100a, fogNear: 22, fogFar: 70, sky: 0x9fe0a8, ground: 0x1a2a14, hemi: 0.6, sunColor: 0xb0ffc8, sun: 0.35 },
 };
 // Titik muncul: 'zona tujuan:asal'
@@ -686,6 +719,8 @@ const SPAWNS = {
   'store:village': interiors.store.spawn,
   'village:smithy': village.shops.find((s) => s.id === 'smithy').out,
   'village:store': village.shops.find((s) => s.id === 'store').out,
+  'castle:village': interiors.castle.spawn,
+  'village:castle': scenery.castleDoor.out,
 };
 // Tata ruang dungeon + dekorasi sesuai wilayah
 const layoutCache = {};
@@ -761,7 +796,7 @@ function tintGroup(group, hex, lightHex) {
 }
 function setZone(name, from = 'start') {
   zone = name;
-  ARENA = name === 'boss' ? BOSS_PLAY : INDOOR.has(name) ? INTERIOR_HALF : 38;
+  ARENA = name === 'boss' ? BOSS_PLAY : INDOOR.has(name) ? interiors[name].half || INTERIOR_HALF : name === 'village' ? 122 : 38;
   const RG = curRegion();
   const z = name === 'arena' || name === 'boss' ? RG.env[name] : ZONES[name];
   if (name === 'arena') {
@@ -787,6 +822,7 @@ function setZone(name, from = 'start') {
   bossGroup.visible = name === 'boss';
   interiors.smithy.group.visible = name === 'smithy';
   interiors.store.group.visible = name === 'store';
+  interiors.castle.group.visible = name === 'castle';
 
   for (const e of enemies) {
     e.root.parent?.remove(e.root);
@@ -1693,6 +1729,28 @@ function elderTalk() {
   ][q.step];
   return { lines: [hint, 'Check the quest line under your health bar if you lose track.'] };
 }
+function kingTalk() {
+  const q = save.quest;
+  const R = curRegion();
+  if (!save.kingGift) {
+    return {
+      lines: [
+        'Welcome to Aurelia, traveler. The crystal beneath that village has shaken my halls for many nights.',
+        'My soldiers could not hold the dungeons. If you are the one who will face its wardens, take this as the crown\'s gift.',
+      ],
+      onEnd: () => {
+        save.kingGift = 1;
+        save.gold += 150;
+        addItem('health_potion', 5);
+        persist();
+        popText('+150 🪙', '#ffe08a');
+        toast('The King gave you 150 gold and 5 Health Potions.', 3200);
+      },
+    };
+  }
+  if (q.done) return { lines: ['You united the realm against the crystal. Aurelia will remember your name.', 'Wander these halls as an honored guest, hero.'] };
+  return { lines: [`You are bound for the ${R.place}. May the crown\'s light guide you.`, `Return to the village elder when ${R.boss.name} falls. ${save.shards.length}/4 shards gathered so far.`] };
+}
 function turnIn() {
   const q = save.quest;
   const R = curRegion();
@@ -2384,7 +2442,9 @@ function updateHud() {
   talkBtn.style.display = near ? 'flex' : 'none';
   infoEl.textContent = state.hp <= 0
     ? 'Defeated'
-    : zone === 'smithy'
+    : zone === 'castle'
+      ? 'Royal Throne Hall'
+      : zone === 'smithy'
       ? "Blacksmith's Forge"
       : zone === 'store'
       ? 'General Store'
@@ -2610,13 +2670,18 @@ function tick() {
           break;
         }
       }
+      const cd = scenery.castleDoor;
+      if (zone === 'village' && Math.hypot(player.position.x - cd.x, player.position.z - cd.z) < cd.r) setZone('castle', 'village');
     } else if (INDOOR.has(zone)) {
       const ex = interiors[zone].exit;
       if (Math.hypot(player.position.x - ex.x, player.position.z - ex.z) < ex.r) setZone('village', zone);
     }
   }
   if (zone === 'village' || INDOOR.has(zone)) {
-    if (zone === 'village') village.update(clock.elapsedTime);
+    if (zone === 'village') {
+      village.update(clock.elapsedTime);
+      scenery.update(clock.elapsedTime, dt);
+    }
     else interiors[zone].update(clock.elapsedTime);
     for (const n of npcs) {
       if (n.zone !== zone) continue;

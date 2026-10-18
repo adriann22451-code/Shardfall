@@ -83,6 +83,31 @@ export const NPCS = [
     path: [[14, 4], [14, 16]],
     lines: ['Good day! Be careful out past the gate.', 'The merchant and the smith are open every day, even now.'],
   },
+  // Aula takhta kerajaan (zona castle)
+  {
+    id: 'king',
+    name: 'King Aldric',
+    model: 'Barbarian', items: {},
+    look: { headMesh: 'Barbarian_Head', crown: true, hair: 0xd8d8de, beard: 0xe6e6ea, scale: 1.05 },
+    zone: 'castle',
+    x: 0, z: -9.6, face: 0,
+    lines: ['Welcome to Aurelia.'],
+  },
+  {
+    id: 'rguard1', name: 'Royal Guard', model: 'Knight', items: { r: 'sword_1handed', l: 'shield_round' },
+    zone: 'castle', x: -2.6, z: -8.4, face: 0,
+    lines: ['Stand tall before the King.', 'No monster has ever crossed these walls. Not yet.'],
+  },
+  {
+    id: 'rguard2', name: 'Royal Guard', model: 'Knight', items: { r: 'sword_1handed', l: 'shield_round' },
+    zone: 'castle', x: 2.6, z: -8.4, face: 0,
+    lines: ['The King listens to anyone who fights for the realm.'],
+  },
+  {
+    id: 'rguard3', name: 'Royal Guard', model: 'Rogue', items: { r: 'sword_1handed', l: 'shield_round' },
+    zone: 'castle', x: -3.2, z: 9.2, face: 0,
+    lines: ['The gates stay open for travelers, but we watch the road at night.'],
+  },
   {
     id: 'guard',
     name: 'Gate Guard',
@@ -461,11 +486,13 @@ export async function buildVillage(onProgress) {
       const x = x0 + (x1 - x0) * f;
       const z = z0 + (z1 - z0) * f;
       if (skip?.(x, z)) continue;
+      if (ry === 0) colliders.push({ x0: x - 1.1, x1: x + 1.1, z0: z - 0.3, z1: z + 0.3 });
+      else colliders.push({ x0: x - 0.3, x1: x + 0.3, z0: z - 1.1, z1: z + 1.1 });
       put(group, i % 4 === 0 ? 'Prop_MetalFence_Ornament' : 'Prop_MetalFence_Simple', x, 0, z, ry);
     }
   };
   const E = 38;
-  fenceAlong(-E, -E, E, -E, 0); // selatan (belakang titik awal)
+  fenceAlong(-E, -E, E, -E, 0, (x) => Math.abs(x + 20) < 5); // gerbang kerajaan di x=-20; selatan (belakang titik awal)
   fenceAlong(-E, -E, -E, E, Math.PI / 2); // barat
   fenceAlong(E, -E, E, E, Math.PI / 2); // timur
   fenceAlong(-E, GZ, E, GZ, 0, (x) => Math.abs(x) < 10.5); // utara, menyambung ke dinding gerbang
