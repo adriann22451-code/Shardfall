@@ -5,6 +5,7 @@ import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.j
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 import { buildInterior, INTERIOR_HALF } from './interiors.js';
+import { REGIONS, ENDING } from './regions.js';
 import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES } from './items.js';
 
 const hpEl = document.getElementById('hp');
@@ -146,6 +147,7 @@ arenaPortal.position.set(ARENA_PORTAL.x, 1.6, ARENA_PORTAL.z);
 arenaGroup.add(arenaPortal);
 const arenaPortalLight = new THREE.PointLight(0xffd36b, 25, 16, 2);
 arenaPortalLight.position.set(ARENA_PORTAL.x, 2, ARENA_PORTAL.z);
+arenaPortalLight.userData.keep = true;
 arenaGroup.add(arenaPortalLight);
 
 // Pintu ke sarang Root Warden (dinding timur dungeon)
@@ -158,6 +160,7 @@ bossPortal.position.set(BOSS_PORTAL.x, 1.6, BOSS_PORTAL.z);
 arenaGroup.add(bossPortal);
 const bossPortalLight = new THREE.PointLight(0x6bff7a, 25, 16, 2);
 bossPortalLight.position.set(BOSS_PORTAL.x - 1, 2, BOSS_PORTAL.z);
+bossPortalLight.userData.keep = true;
 arenaGroup.add(bossPortalLight);
 const bossPortalLabel = makeLabel("Root Warden's Lair");
 bossPortalLabel.position.set(BOSS_PORTAL.x, 4.2, BOSS_PORTAL.z);
@@ -418,6 +421,15 @@ function spawnEnemy() {
   const warrior = Math.random() < 0.4;
   const model = SkeletonUtils.clone((warrior ? warriorGltf : minionGltf).scene);
   prepareModel(model);
+  const eTint = curRegion().enemyTint;
+  if (eTint !== 0xffffff) {
+    model.traverse((o) => {
+      if (o.isMesh && o.material && o.material.color) {
+        o.material = o.material.clone();
+        o.material.color.multiply(new THREE.Color(eTint));
+      }
+    });
+  }
 
   if (warrior) {
     const slot = model.getObjectByName('handslot.r');
@@ -445,9 +457,9 @@ function spawnEnemy() {
   enemies.push({
     root,
     actor,
-    hp: warrior ? 6 : 3,
-    maxHp: warrior ? 6 : 3,
-    dmg: warrior ? 11 : 7,
+    hp: Math.round((warrior ? 6 : 3) * curRegion().mult.hp),
+    maxHp: Math.round((warrior ? 6 : 3) * curRegion().mult.hp),
+    dmg: Math.round((warrior ? 11 : 7) * curRegion().mult.dmg),
     aggro: false,
     engaged: false,
     windup: 0,
@@ -467,11 +479,9 @@ setInterval(() => {
 
 // ---------- Warga desa ----------
 const npcs = [];
-function makeLabel(text) {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
+function drawLabel(c, text) {
   const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
   g.font = 'bold 30px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -480,13 +490,25 @@ function makeLabel(text) {
   g.strokeText(text, 128, 32);
   g.fillStyle = '#ffe9a8';
   g.fillText(text, 128, 32);
+}
+function makeLabel(text) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  drawLabel(c, text);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
   sp.scale.set(2.6, 0.65, 1);
   sp.position.y = 2.7;
   sp.renderOrder = 10;
+  sp.userData.canvas = c;
+  sp.userData.tex = tex;
   return sp;
+}
+function relabel(sp, text) {
+  drawLabel(sp.userData.canvas, text);
+  sp.userData.tex.needsUpdate = true;
 }
 // Tampilan khusus NPC (mis. kakek: tanpa topi penyihir, rambut dan jenggot putih, sedikit membungkuk)
 function applyLook(model, look) {
@@ -584,7 +606,7 @@ function nearestNpc(range) {
 }
 function showLine() {
   dialogName.textContent = talk.npc.def.name;
-  dialogText.textContent = talk.npc.def.lines[talk.i];
+  dialogText.textContent = (talk.lines || talk.npc.def.lines)[talk.i];
   dialogEl.style.display = 'block';
 }
 function closeDialog() {
@@ -595,8 +617,11 @@ function interact() {
   if (uiOpen || !(zone === 'village' || INDOOR.has(zone)) || state.hp <= 0) return;
   if (talk) {
     talk.i++;
-    if (talk.i >= talk.npc.def.lines.length) closeDialog();
-    else showLine();
+    if (talk.i >= (talk.lines || talk.npc.def.lines).length) {
+      const cb = talk.onEnd;
+      closeDialog();
+      if (cb) cb();
+    } else showLine();
     return;
   }
   const n = nearestNpc(3.2);
@@ -606,6 +631,7 @@ function interact() {
     return;
   }
   talk = { npc: n, i: 0 };
+  if (n.def.id === 'elder') Object.assign(talk, elderTalk());
   // NPC menoleh ke pemain (dan berhenti berjalan selama bicara)
   n.root.rotation.y = Math.atan2(player.position.x - n.root.position.x, player.position.z - n.root.position.z);
   showLine();
@@ -640,10 +666,34 @@ const SPAWNS = {
   'village:smithy': village.shops.find((s) => s.id === 'smithy').out,
   'village:store': village.shops.find((s) => s.id === 'store').out,
 };
+const tmpTint = new THREE.Color();
+function tintGroup(group, hex, lightHex) {
+  const seen = new Set();
+  group.traverse((o) => {
+    if (o.isMesh) {
+      for (const mat of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!mat.isMeshStandardMaterial || seen.has(mat) || mat.userData.noTint) continue;
+        seen.add(mat);
+        if (!mat.userData.base) mat.userData.base = mat.color.clone();
+        mat.color.copy(mat.userData.base).multiply(tmpTint.setHex(hex));
+      }
+    } else if (o.isPointLight && !o.userData.keep) {
+      o.color.setHex(lightHex);
+    }
+  });
+}
 function setZone(name, from = 'start') {
   zone = name;
   ARENA = name === 'boss' ? BOSS_PLAY : INDOOR.has(name) ? INTERIOR_HALF : 38;
-  const z = ZONES[name];
+  const RG = curRegion();
+  const z = name === 'arena' || name === 'boss' ? RG.env[name] : ZONES[name];
+  if (name === 'arena') {
+    tintGroup(arenaGroup, RG.tint.arena, RG.torch);
+    relabel(bossPortalLabel, `${RG.boss.name}'s Lair`);
+    if (from === 'village') toast(`${RG.place} — recommended level ${RG.recLv}+`, 3500);
+  } else if (name === 'boss') {
+    tintGroup(bossGroup, RG.tint.boss, RG.bossLight);
+  }
   scene.background.setHex(z.bg);
   scene.fog.color.setHex(z.bg);
   scene.fog.near = z.fogNear;
@@ -963,7 +1013,8 @@ function damageEnemy(en, dir, dmg = 1, force = 7) {
   if (en.hp <= 0) {
     en.dead = true;
     updateEnemyBar(en);
-    gainXp(XP[en.type] || 8);
+    gainXp(Math.round((XP[en.type] || 8) * curRegion().mult.xp));
+    if (zone === 'arena') questKill();
     en.deadTimer = 1.8;
     state.kills++;
     playOnce(en.actor, 'Death_A', { hold: true });
@@ -1134,6 +1185,7 @@ bossExit.position.set(BOSS_EXIT.x, 1.5, BOSS_EXIT.z);
 bossGroup.add(bossExit);
 const bossExitLight = new THREE.PointLight(0xffd36b, 22, 14, 2);
 bossExitLight.position.set(BOSS_EXIT.x, 2, BOSS_EXIT.z + 1);
+bossExitLight.userData.keep = true;
 bossGroup.add(bossExitLight);
 
 const bossFx = new THREE.Group();
@@ -1145,6 +1197,7 @@ let shardDrop = null;
 const thornGeo = new THREE.ConeGeometry(0.28, 1, 6);
 thornGeo.translate(0, 0.5, 0);
 const thornMat = new THREE.MeshStandardMaterial({ color: 0x5a3a20, emissive: 0x1d5a24, emissiveIntensity: 0.8, roughness: 1 });
+thornMat.userData.noTint = true;
 
 function clearBossFx() {
   for (const t of teles.splice(0)) bossFx.remove(t.g);
@@ -1229,11 +1282,13 @@ function updateBossFx(dt) {
     s.mesh.position.y = 1.4 + Math.sin(s.t * 2.4) * 0.25;
     s.mesh.rotation.y += dt * 1.6;
     if (Math.hypot(player.position.x - s.x, player.position.z - s.z) < 2.2) {
-      if (!save.shards.includes('root')) save.shards.push('root');
+      const R = curRegion();
+      if (!save.shards.includes(R.shard)) save.shards.push(R.shard);
+      if (save.quest.step === 2) save.quest.step = 3;
       persist();
       bossFx.remove(s.g);
       shardDrop = null;
-      toast(`Root Shard obtained! (${save.shards.length}/4) — return to the village`, 4500);
+      toast(`${R.boss.shardName} obtained! (${save.shards.length}/4) — return to the Village Elder`, 4500);
     }
   }
 }
@@ -1257,14 +1312,19 @@ function attachToBone(bone, mesh, x, y, z, qWorld) {
   bone.add(mesh);
 }
 
+let bossDmg = 1;
 function spawnBoss() {
+  const C = curRegion().boss;
+  bossDmg = C.dmg;
+  thornMat.emissive.setHex(C.thorn);
+  document.getElementById('bossName').textContent = C.name.toUpperCase();
   const model = SkeletonUtils.clone(npcGltf.Barbarian.scene);
   prepareModel(model);
   const mats = [];
   model.traverse((o) => {
     if (o.isMesh) {
       o.material = o.material.clone();
-      o.material.color.set(0x8fc36a); // nuansa lumut
+      o.material.color.set(C.tint); // warna sesuai wilayah
       mats.push(o.material);
     }
   });
@@ -1290,13 +1350,13 @@ function spawnBoss() {
     const box = new THREE.Box3().setFromObject(headMesh);
     const c = box.getCenter(new THREE.Vector3());
     const sz = box.getSize(new THREE.Vector3());
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x9dff6a });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: C.eye });
     for (const sx of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.BoxGeometry(sz.x * 0.14, sz.y * 0.09, 0.02), eyeMat);
       attachToBone(head, eye, c.x + sx * sz.x * 0.2, c.y + sz.y * 0.05, box.max.z + 0.006);
     }
   }
-  model.scale.setScalar(2.4);
+  model.scale.setScalar(C.scale);
 
   const root = new THREE.Group();
   root.add(model);
@@ -1310,9 +1370,10 @@ function spawnBoss() {
   const boss = {
     boss: true,
     root, actor, mats,
-    hp: 45, maxHp: 45,
+    hp: C.hp, maxHp: C.hp,
+    cfg: C,
     radius: 1.5,
-    speed: 2.6,
+    speed: C.speed,
     knock: new THREE.Vector3(),
     flash: 0,
     dead: false,
@@ -1322,11 +1383,11 @@ function spawnBoss() {
   enemies.push(boss);
   bossHpEl.style.width = '100%';
   bossBarEl.style.display = 'block';
-  toast('The Root Warden awakens!', 2600);
+  toast(C.enter, 2600);
 }
 
 function hitPlayerAt(x, z, r, dmg) {
-  if (Math.hypot(player.position.x - x, player.position.z - z) < r + 0.35) damagePlayer(dmg);
+  if (Math.hypot(player.position.x - x, player.position.z - z) < r + 0.35) damagePlayer(Math.round(dmg * bossDmg));
   eruption(x, z, r * 0.9);
   shake = Math.max(shake, 0.3);
 }
@@ -1357,7 +1418,7 @@ function bossChooseAttack(en) {
     makeTele(cx, cz, 5.4, a.t, () => hitPlayerAt(cx, cz, 5.4, 16));
     Object.assign(a, { clip: 'Melee_2H_Attack_Spin', lead: 0.75, ts: 1.2 });
   } else {
-    const n = a.phase2 ? 6 : 3;
+    const n = (a.phase2 ? 6 : 3) + (en.cfg.extraRoots || 0);
     a.t = 1.3 * k;
     for (let i = 0; i < n; i++) {
       let x = player.position.x;
@@ -1396,14 +1457,14 @@ function updateBoss(en, dt, alive) {
   if (!a.phase2 && a.state !== 'intro' && en.hp <= en.maxHp * 0.5) {
     a.phase2 = true;
     a.k = 0.75;
-    en.speed = 3.4;
+    en.speed = en.cfg.speed * 1.3;
     a.state = 'roar';
     a.t = 1.6;
     for (const t of teles.splice(0)) bossFx.remove(t.g);
     playOnce(en.actor, 'Use_Item', { maxLock: 1.6 });
     eruption(en.root.position.x, en.root.position.z, 6);
     shake = 0.5;
-    toast('The Root Warden roars — the roots awaken!', 3000);
+    toast(en.cfg.roar, 3000);
   }
 
   if (a.state === 'intro') {
@@ -1453,12 +1514,13 @@ function killBoss(en) {
   eruption(en.root.position.x, en.root.position.z, 5);
   shake = 0.6;
   dropLoot('boss', en.root.position.x, en.root.position.z + 1.5);
-  gainXp(XP.boss);
-  if (save.shards.includes('root')) {
-    toast('Root Warden defeated — the roots fall silent once more.', 4000);
+  const R = curRegion();
+  gainXp(Math.round(XP.boss * R.mult.xp));
+  if (save.shards.includes(R.shard)) {
+    toast(`${R.boss.name} defeated again.`, 4000);
     return;
   }
-  toast('Root Warden defeated!', 3500);
+  toast(R.boss.dead, 3500);
   // pecahan kristal jatuh dan melayang menunggu diambil
   const g = new THREE.Group();
   const x = en.root.position.x;
@@ -1466,17 +1528,124 @@ function killBoss(en) {
   g.position.set(x, 0, z);
   const mesh = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.6, 0),
-    new THREE.MeshStandardMaterial({ color: 0x9dffb8, emissive: 0x2cff7a, emissiveIntensity: 1.6, roughness: 0.2 })
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: R.shardColor, emissiveIntensity: 1.6, roughness: 0.2 })
   );
   mesh.scale.set(0.8, 1.6, 0.8);
   mesh.position.y = 1.4;
   g.add(mesh);
-  const light = new THREE.PointLight(0x6bff9a, 30, 14, 2);
+  const light = new THREE.PointLight(R.shardColor, 30, 14, 2);
+  light.userData.keep = true;
   light.position.y = 1.6;
   g.add(light);
   bossFx.add(g);
   shardDrop = { g, mesh, x, z, t: 0 };
 }
+
+// ---------- Misi, wilayah, dan akhir cerita ----------
+if (!save.quest) save.quest = { region: 0, step: save.shards.includes('root') ? 3 : 0, kills: 0, done: false, briefed: save.shards.includes('root') ? 0 : -1 };
+const questEl = document.getElementById('quest');
+let gateMsgT = 0;
+function curRegion() {
+  return REGIONS[Math.min(save.quest.region, REGIONS.length - 1)];
+}
+const bossOpen = () => save.quest.done || save.quest.step >= 2;
+function questText() {
+  const q = save.quest;
+  const R = curRegion();
+  if (q.done) return 'The story is complete. Hunt freely!';
+  if (q.briefed !== q.region) return 'Speak with the Village Elder.';
+  if (q.step === 0) return `Slay skeletons in the ${R.place} (${q.kills}/${R.kill})`;
+  if (q.step === 1) return `Collect ${ITEMS[R.collect.id].name} (${Math.min(invCount(R.collect.id), R.collect.n)}/${R.collect.n})`;
+  if (q.step === 2) return `Defeat ${R.boss.name} — find the glowing door`;
+  return 'Return to the Village Elder.';
+}
+function questKill() {
+  const q = save.quest;
+  const R = curRegion();
+  if (q.done || q.step !== 0 || q.briefed !== q.region) return;
+  q.kills++;
+  persist();
+  if (q.kills >= R.kill) {
+    q.kills = R.kill;
+    q.step = 1;
+    toast(`Objective complete: skeletons slain. Now collect ${R.collect.n} ${ITEMS[R.collect.id].name}.`, 3500);
+  }
+}
+function checkQuest() {
+  const q = save.quest;
+  const R = curRegion();
+  if (!q.done && q.briefed === q.region && q.step === 1 && invCount(R.collect.id) >= R.collect.n) {
+    q.step = 2;
+    persist();
+    toast(`The way to ${R.boss.name} is open! Find the glowing door in the ${R.place}.`, 4000);
+  }
+}
+// Dialog Elder menurut kemajuan misi
+function elderTalk() {
+  const q = save.quest;
+  const R = curRegion();
+  if (q.done) {
+    return { lines: ['The crystal has been dealt with, and you have my thanks, hero.', 'The monsters still wander the depths. If you wish to hunt, the gate is open.'] };
+  }
+  if (q.briefed !== q.region) {
+    return { lines: R.briefing, onEnd: () => ((q.briefed = q.region), persist(), toast(`New quest: ${R.name}`, 3000)) };
+  }
+  if (q.step === 3) return { lines: R.complete, onEnd: turnIn };
+  const hint = [
+    `Slay ${R.kill} skeletons in the ${R.place}. You have slain ${q.kills} so far.`,
+    `Bring back ${R.collect.n} ${ITEMS[R.collect.id].name}. The creatures of the ${R.place} carry them.`,
+    `The way to ${R.boss.name} is open. Find the glowing door in the ${R.place}.`,
+  ][q.step];
+  return { lines: [hint, 'Check the quest line under your health bar if you lose track.'] };
+}
+function turnIn() {
+  const q = save.quest;
+  const R = curRegion();
+  save.gold += R.reward.gold;
+  popText(`+${R.reward.gold} 🪙`, '#ffe08a');
+  for (const [id, n] of Object.entries(R.reward.items)) {
+    addItem(id, n);
+    popText(`+${n} ${ITEMS[id].name}`, '#bff4ff');
+  }
+  if (R.reward.gear) {
+    addItem(R.reward.gear);
+    popText(`+1 ${ITEMS[R.reward.gear].name}`, '#bff4ff');
+  }
+  gainXp(60 * (q.region + 1));
+  if (q.region >= REGIONS.length - 1) {
+    persist();
+    openChoice();
+    return;
+  }
+  q.region++;
+  q.step = 0;
+  q.kills = 0;
+  persist();
+  toast(`Quest complete! Speak with the Elder again for your next task.`, 3500);
+}
+const choiceEl = document.getElementById('choice');
+const endingEl = document.getElementById('ending');
+function openChoice() {
+  choiceEl.classList.add('open');
+  updateUiOpen();
+}
+function finish(kind) {
+  choiceEl.classList.remove('open');
+  updateUiOpen();
+  save.quest.done = true;
+  save.quest.ending = kind;
+  persist();
+  document.getElementById('endTitle').textContent = kind === 'unite' ? 'THE CORE UNITED' : 'THE CORE SHATTERED';
+  document.getElementById('endText').innerHTML = ENDING[kind].join('<br><br>');
+  endingEl.classList.add('open');
+  updateUiOpen();
+}
+document.getElementById('chUnite').addEventListener('click', () => finish('unite'));
+document.getElementById('chDestroy').addEventListener('click', () => finish('destroy'));
+document.getElementById('endClose').addEventListener('click', () => {
+  endingEl.classList.remove('open');
+  updateUiOpen();
+});
 
 // ---------- Inventory, potion, loot, dan toko ----------
 if (!save.inv) {
@@ -1786,7 +1955,8 @@ const tabSell = document.getElementById('tabSell');
 const tabGear = document.getElementById('tabGear');
 let shopTab = 'buy';
 let shopKind = 'items';
-const updateUiOpen = () => (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open'));
+const updateUiOpen = () =>
+  (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open') || choiceEl.classList.contains('open') || endingEl.classList.contains('open'));
 
 function renderShop() {
   shopGold.textContent = '🪙 ' + save.gold;
@@ -1914,9 +2084,12 @@ function spawnPickup(id, n, x, z) {
   pickups.push({ g, id, n, x, z, y: 0.4, vx: Math.cos(a) * 2.2, vz: Math.sin(a) * 2.2, vy: 4 + Math.random() * 1.5, age: 0, landed: false });
 }
 function dropLoot(table, x, z) {
-  for (const e of LOOT[table] || []) {
+  const R = curRegion();
+  const list = [...(LOOT[table] || []), ...(table === 'boss' ? R.bossLoot : R.bonusLoot)];
+  for (const e of list) {
     if (Math.random() > e.chance) continue;
-    const n = e.min ? e.min + Math.floor(Math.random() * (e.max - e.min + 1)) : 1;
+    let n = e.min ? e.min + Math.floor(Math.random() * (e.max - e.min + 1)) : 1;
+    if (e.id === 'gold') n = Math.round(n * R.mult.gold);
     spawnPickup(e.id, n, x, z);
   }
 }
@@ -2041,9 +2214,12 @@ function updateHud() {
       : zone === 'village'
       ? `${VILLAGE_NAME} · Shards ${save.shards.length}/4`
       : zone === 'boss'
-        ? `Root Warden's Lair · Shards ${save.shards.length}/4`
-        : `Dungeon · Kills ${state.kills} · Shards ${save.shards.length}/4`;
+        ? `${curRegion().boss.name}'s Lair · Shards ${save.shards.length}/4`
+        : `${curRegion().place} · Shards ${save.shards.length}/4`;
   updateSkillUi();
+  checkQuest();
+  questEl.textContent = '📜 ' + questText();
+  questEl.classList.toggle('done', !!save.quest.done);
   goldEl.textContent = save.gold;
   lvEl.textContent = 'Lv ' + save.lvl;
   xpEl.style.width = (save.lvl >= MAX_LEVEL ? 100 : (save.xp / xpNeed(save.lvl)) * 100) + '%';
@@ -2232,11 +2408,22 @@ function tick() {
   // Pindah zona lewat gerbang / portal
   if (alive) {
     if (zone === 'village' && Math.hypot(player.position.x - village.gate.x, player.position.z - village.gate.z) < village.gate.r) {
-      setZone('arena', 'village');
+      if (save.quest.briefed === save.quest.region || save.quest.done) setZone('arena', 'village');
+      else {
+        player.position.z -= 2;
+        if (clock.elapsedTime > gateMsgT) {
+          gateMsgT = clock.elapsedTime + 3;
+          toast('The guards stop you: "Speak with the Village Elder first."', 3000);
+        }
+      }
     } else if (zone === 'arena' && Math.hypot(player.position.x - ARENA_PORTAL.x, player.position.z - ARENA_PORTAL.z) < ARENA_PORTAL.r) {
       setZone('village', 'arena');
     } else if (zone === 'arena' && Math.hypot(player.position.x - BOSS_PORTAL.x, player.position.z - BOSS_PORTAL.z) < BOSS_PORTAL.r) {
-      setZone('boss', 'arena');
+      if (bossOpen()) setZone('boss', 'arena');
+      else if (clock.elapsedTime > gateMsgT) {
+        gateMsgT = clock.elapsedTime + 3;
+        toast('The door is sealed by crystal energy. Complete your objectives first.', 2600);
+      }
     } else if (zone === 'boss' && Math.hypot(player.position.x - BOSS_EXIT.x, player.position.z - BOSS_EXIT.z) < BOSS_EXIT.r) {
       setZone('arena', 'boss');
     } else if (zone === 'village') {
@@ -2264,6 +2451,9 @@ function tick() {
     arenaPortal.rotation.y += dt;
     arenaPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3) * 6;
     bossPortal.rotation.y -= dt;
+    const open = bossOpen();
+    bossPortal.material.color.setHex(open ? 0x6bff7a : 0xff4a4a);
+    bossPortalLight.color.setHex(open ? 0x6bff7a : 0xff4a4a);
     bossPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3.7) * 6;
     dungeon.update(clock.elapsedTime);
   } else {

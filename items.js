@@ -6,7 +6,10 @@ export const ITEMS = {
   power_elixir: { name: 'Might Elixir', icon: '🔥', kind: 'potion', buff: 'power', dur: 25, buy: 35, sell: 14, glow: 0xff9a3a, desc: '+50% damage for 25 seconds.' },
   bone_fragment: { name: 'Bone Fragment', icon: '🦴', kind: 'material', sell: 4, glow: 0xffffff, desc: 'A brittle shard of bone. The merchant buys these.' },
   root_fiber: { name: 'Root Fiber', icon: '🌿', kind: 'material', sell: 15, glow: 0x7dff7a, desc: "Tough fiber torn from the Root Warden's roots. Sells well." },
-  root_shard: { name: 'Root Shard', icon: '💎', kind: 'key', glow: 0x6bff9a, desc: 'A crystal shard from the Root Warden. A key item, it cannot be sold.' },
+  root_shard: { name: 'Crystal Shards', icon: '💎', kind: 'key', glow: 0x6bff9a, desc: 'Shards of the Core Crystal taken from the wardens. Key items, they cannot be sold.' },
+  ember_ore: { name: 'Ember Ore', icon: '🪨', kind: 'material', sell: 12, glow: 0xff7a2a, desc: 'Glowing ore from the Ember Mines. The Elder wants it.' },
+  frost_crystal: { name: 'Frost Crystal', icon: '❄️', kind: 'material', sell: 18, glow: 0x9fe8ff, desc: 'A sliver of eternal ice. Sells well.' },
+  void_shard: { name: 'Void Shard', icon: '🔮', kind: 'material', sell: 26, glow: 0xb07aff, desc: 'A fragment of the broken Core. It hums faintly.' },
 };
 
 // Alat bantu berburu
@@ -29,6 +32,13 @@ Object.assign(ITEMS, {
   steel_blade: gear('Steel Blade', '⚔️', 'weapon', 5, { atk: 0.7 }, 260, { desc: 'Sharp, balanced steel. +70% damage.', tint: 0x4aa8ff, scale: 1.2 }),
   knight_longsword: gear("Knight's Longsword", '⚔️', 'weapon', 8, { atk: 1.2, crit: 0.05 }, 600, { desc: '+120% damage, +5% crit chance.', tint: 0xffd36b, scale: 1.35 }),
   root_blade: gear('Rootbound Blade', '🌿', 'weapon', 3, { atk: 0.9, crit: 0.05 }, 300, { desc: "Forged from the Root Warden's heartwood. +90% damage, +5% crit.", tint: 0x4dff7a, scale: 1.25, glow: 0x6bff9a }),
+  // Boss region 2-4
+  ember_blade: gear('Emberforged Blade', '🔥', 'weapon', 6, { atk: 1.1, crit: 0.06 }, 520, { desc: 'Still hot to the touch. +110% damage, +6% crit.', tint: 0xff6a2a, scale: 1.3, glow: 0xff7a2a }),
+  ember_plate: gear('Emberforged Plate', '🔥', 'armor', 6, { def: 11, hp: 25 }, 480, { desc: '+11 defense, +25 max HP.', glow: 0xff7a2a }),
+  frost_edge: gear('Frostbrand', '❄️', 'weapon', 9, { atk: 1.6, crit: 0.06 }, 800, { desc: 'Rimed with eternal frost. +160% damage, +6% crit.', tint: 0x7fdcff, scale: 1.35, glow: 0x9fe8ff }),
+  frost_mail: gear('Frostwoven Mail', '❄️', 'armor', 9, { def: 16, hp: 35 }, 760, { desc: '+16 defense, +35 max HP.', glow: 0x9fe8ff }),
+  hollow_blade: gear('Hollow Blade', '🔮', 'weapon', 12, { atk: 2.3, crit: 0.1 }, 1200, { desc: 'It cuts more than flesh. +230% damage, +10% crit.', tint: 0xb07aff, scale: 1.45, glow: 0xb07aff }),
+  hollow_plate: gear('Hollow Plate', '🔮', 'armor', 12, { def: 22, hp: 50 }, 1100, { desc: '+22 defense, +50 max HP.', glow: 0xb07aff }),
   // Armor
   leather_armor: gear('Leather Armor', '🥋', 'armor', 1, { def: 3 }, 70, { desc: 'Light and flexible. +3 defense.' }),
   chain_mail: gear('Chain Mail', '🛡️', 'armor', 4, { def: 7, hp: 10 }, 220, { desc: '+7 defense, +10 max HP.' }),
@@ -88,8 +98,6 @@ export const LOOT = {
     { id: 'health_potion', chance: 1, min: 2, max: 2 },
     { id: 'power_elixir', chance: 1 },
     { id: 'root_fiber', chance: 1, min: 3, max: 3 },
-    { id: 'root_blade', chance: 0.6 },
-    { id: 'root_mail', chance: 0.4 },
   ],
 };
 
