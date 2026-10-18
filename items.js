@@ -9,7 +9,55 @@ export const ITEMS = {
   root_shard: { name: 'Root Shard', icon: '💎', kind: 'key', glow: 0x6bff9a, desc: 'A crystal shard from the Root Warden. A key item, it cannot be sold.' },
 };
 
-export const SHOP = ['health_potion', 'greater_potion', 'speed_elixir', 'power_elixir'];
+// Alat bantu berburu
+Object.assign(ITEMS, {
+  bomb: { name: 'Fire Bomb', icon: '💣', kind: 'tool', use: 'bomb', buy: 45, sell: 15, glow: 0xff7a2a, desc: 'Explodes around you for heavy area damage. Hotkey 5.' },
+  return_scroll: { name: 'Return Scroll', icon: '📜', kind: 'tool', use: 'return', buy: 40, sell: 14, glow: 0xffe08a, desc: 'Instantly teleports you back to the village.' },
+});
+
+// Equipment. Slot: weapon, armor, helm, boots, ring.
+// atk = bonus damage (0.3 = +30%), def = defense, hp = max HP, spd = move speed (0.1 = +10%), crit = crit chance
+export const SLOTS = ['weapon', 'armor', 'helm', 'boots', 'ring'];
+export const SLOT_ICON = { weapon: '⚔️', armor: '🛡️', helm: '🪖', boots: '👢', ring: '💍' };
+const gear = (name, icon, slot, lvl, stats, buy, extra = {}) => ({
+  name, icon, kind: 'gear', slot, lvl, ...stats, buy, sell: Math.round(buy * 0.35), glow: extra.glow || 0xbfd0ff, ...extra,
+});
+Object.assign(ITEMS, {
+  // Senjata
+  rusty_sword: gear("Traveler's Sword", '🗡️', 'weapon', 1, { atk: 0 }, 10, { desc: 'A plain sword. Reliable, if unremarkable.', sell: 3 }),
+  iron_sword: gear('Iron Sword', '🗡️', 'weapon', 2, { atk: 0.3 }, 90, { desc: 'Solid iron. +30% damage.', tint: 0x8899aa, scale: 1.1 }),
+  steel_blade: gear('Steel Blade', '⚔️', 'weapon', 5, { atk: 0.7 }, 260, { desc: 'Sharp, balanced steel. +70% damage.', tint: 0x4aa8ff, scale: 1.2 }),
+  knight_longsword: gear("Knight's Longsword", '⚔️', 'weapon', 8, { atk: 1.2, crit: 0.05 }, 600, { desc: '+120% damage, +5% crit chance.', tint: 0xffd36b, scale: 1.35 }),
+  root_blade: gear('Rootbound Blade', '🌿', 'weapon', 3, { atk: 0.9, crit: 0.05 }, 300, { desc: "Forged from the Root Warden's heartwood. +90% damage, +5% crit.", tint: 0x4dff7a, scale: 1.25, glow: 0x6bff9a }),
+  // Armor
+  leather_armor: gear('Leather Armor', '🥋', 'armor', 1, { def: 3 }, 70, { desc: 'Light and flexible. +3 defense.' }),
+  chain_mail: gear('Chain Mail', '🛡️', 'armor', 4, { def: 7, hp: 10 }, 220, { desc: '+7 defense, +10 max HP.' }),
+  plate_armor: gear('Plate Armor', '🛡️', 'armor', 8, { def: 13, hp: 25 }, 560, { desc: 'Heavy plate. +13 defense, +25 max HP.' }),
+  root_mail: gear('Rootweave Mail', '🌿', 'armor', 3, { def: 9, hp: 20 }, 280, { desc: 'Living bark woven into mail. +9 defense, +20 max HP.', glow: 0x6bff9a }),
+  // Helm
+  leather_cap: gear('Leather Cap', '🧢', 'helm', 1, { def: 1, hp: 5 }, 40, { desc: '+1 defense, +5 max HP.' }),
+  iron_helm: gear('Iron Helm', '🪖', 'helm', 3, { def: 3, hp: 10 }, 130, { desc: '+3 defense, +10 max HP.' }),
+  knight_helm: gear("Knight's Helm", '🪖', 'helm', 7, { def: 6, hp: 20 }, 380, { desc: '+6 defense, +20 max HP.' }),
+  // Sepatu
+  worn_boots: gear('Worn Boots', '👢', 'boots', 1, { def: 1, spd: 0.05 }, 50, { desc: '+1 defense, +5% move speed.' }),
+  swift_boots: gear('Swift Boots', '👢', 'boots', 4, { def: 2, spd: 0.12 }, 200, { desc: '+2 defense, +12% move speed.' }),
+  // Cincin
+  ring_power: gear('Ring of Fury', '💍', 'ring', 3, { crit: 0.08 }, 180, { desc: '+8% crit chance.', glow: 0xff7a5a }),
+  ring_life: gear('Ring of Vitality', '💍', 'ring', 3, { hp: 30 }, 180, { desc: '+30 max HP.', glow: 0x7aff8a }),
+  ring_guard: gear('Ring of Warding', '💍', 'ring', 3, { def: 4 }, 180, { desc: '+4 defense.', glow: 0x7ab8ff }),
+});
+
+export const SHOP = ['health_potion', 'greater_potion', 'speed_elixir', 'power_elixir', 'bomb', 'return_scroll'];
+export const SHOP_GEAR = [
+  'iron_sword', 'steel_blade', 'knight_longsword',
+  'leather_armor', 'chain_mail', 'plate_armor',
+  'leather_cap', 'iron_helm', 'knight_helm',
+  'worn_boots', 'swift_boots',
+  'ring_power', 'ring_life', 'ring_guard',
+];
+
+// XP yang didapat per musuh
+export const XP = { minion: 8, warrior: 16, boss: 150 };
 
 // Setiap entri: peluang jatuh; min/max jumlah (default 1)
 export const LOOT = {
@@ -17,6 +65,9 @@ export const LOOT = {
     { id: 'gold', chance: 0.6, min: 2, max: 6 },
     { id: 'health_potion', chance: 0.12 },
     { id: 'bone_fragment', chance: 0.4 },
+    { id: 'bomb', chance: 0.04 },
+    { id: 'return_scroll', chance: 0.02 },
+    { id: 'leather_cap', chance: 0.015 },
   ],
   warrior: [
     { id: 'gold', chance: 0.85, min: 6, max: 14 },
@@ -25,6 +76,11 @@ export const LOOT = {
     { id: 'speed_elixir', chance: 0.05 },
     { id: 'power_elixir', chance: 0.05 },
     { id: 'bone_fragment', chance: 0.6 },
+    { id: 'bomb', chance: 0.08 },
+    { id: 'iron_sword', chance: 0.03 },
+    { id: 'leather_armor', chance: 0.03 },
+    { id: 'worn_boots', chance: 0.04 },
+    { id: 'iron_helm', chance: 0.03 },
   ],
   boss: [
     { id: 'gold', chance: 1, min: 120, max: 180 },
@@ -32,6 +88,8 @@ export const LOOT = {
     { id: 'health_potion', chance: 1, min: 2, max: 2 },
     { id: 'power_elixir', chance: 1 },
     { id: 'root_fiber', chance: 1, min: 3, max: 3 },
+    { id: 'root_blade', chance: 0.6 },
+    { id: 'root_mail', chance: 0.4 },
   ],
 };
 

@@ -115,14 +115,23 @@
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
   /* ---------- Inventory, shop, HUD item ---------- */
+  #xpRow { display: flex; align-items: center; gap: 6px; width: 200px; margin-bottom: 2px; }
+  #lvText { font-weight: 800; font-size: 13px; color: #ffe9a8; min-width: 34px; }
+  #xpbar { flex: 1; height: 7px; border-radius: 4px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,233,168,.6); overflow: hidden; }
+  #xp { height: 100%; width: 0; background: linear-gradient(#9fe8ff, #3aa0ff); transition: width .3s; }
+  #bagStats { font-size: 12px; opacity: .9; margin: 0 0 10px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.06); }
+  #bagEq { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px; }
+  #bagEq .slot small { position: absolute; top: 1px; left: 3px; font-size: 9px; opacity: .6; text-transform: uppercase; }
+  #bagEq .slot { font-size: 24px; }
   #goldRow { margin: 2px 0 4px; font-weight: 700; font-size: 14px; color: #ffe08a; }
   #buffs { font-size: 13px; font-weight: 700; color: #bff4ff; min-height: 18px; }
   #btnBag { right: 14px; top: 14px; width: 54px; height: 54px; font-size: 12px; background: rgba(60,70,110,.7); }
-  #btnQ1, #btnQ2 { width: 52px; height: 52px; background: rgba(110,40,40,.65); }
+  #btnQ1, #btnQ2, #btnQ3 { width: 52px; height: 52px; background: rgba(110,40,40,.65); }
+  #btnQ3 { left: 146px; bottom: 176px; background: rgba(140,80,20,.7); }
   #btnQ1 { left: 22px; bottom: 176px; }
   #btnQ2 { left: 84px; bottom: 176px; background: rgba(120,50,100,.65); }
   .qi { font-size: 20px; line-height: 1; }
-  #btnQ1 small, #btnQ2 small { font-size: 12px; opacity: .95; }
+  #btnQ1 small, #btnQ2 small, #btnQ3 small { font-size: 12px; opacity: .95; }
   .btn.empty { opacity: .45; }
 
   .panel { position: fixed; inset: 0; z-index: 8; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
@@ -144,6 +153,7 @@
   #bagDesc { font-size: 14px; opacity: .85; line-height: 1.4; }
   .pbtn { margin-top: 8px; padding: 8px 18px; border-radius: 8px; border: 0; background: #3b7be0; color: #fff; font-weight: 700; font-size: 14px; display: none; }
   #shopTabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  .pbtn:disabled { background: #444; opacity: .65; }
   .tab { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.05); color: #fff; font-weight: 700; }
   .tab.on { background: #3b7be0; border-color: #3b7be0; }
   .row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.05); margin-bottom: 6px; }
@@ -198,10 +208,11 @@
   <div id="hud">
     <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
     <div id="hpbar"><div id="hp"></div><div id="hpText"></div></div>
+    <div id="xpRow"><span id="lvText">Lv 1</span><div id="xpbar"><div id="xp"></div></div></div>
     <div id="goldRow">🪙 <span id="gold">0</span></div>
     <div id="buffs"></div>
     <div id="info"></div>
-    <div id="help">Controls:<br>WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions · C: camera view · ⚙: graphics<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
+    <div id="help">Controls:<br>WASD / joystick: move &middot; Space / click: attack &middot; 1, 2: skills &middot; Shift: dodge &middot; F: talk &middot; I: bag &middot; 3, 4: potions · 5: bomb · C: camera view · ⚙: graphics<br>Right-click + drag, swipe the screen, or Q/E: rotate camera &middot; Mouse wheel / pinch: zoom</div>
   </div>
 
   <div id="controls">
@@ -215,6 +226,7 @@
     <div class="btn" id="btnCam">Cam<small>C</small></div>
     <div class="btn" id="btnBag">Bag<small>I</small></div>
     <div class="btn" id="btnQ1"><span class="qi">🧪</span><small id="q1c">0</small><div class="cd"></div></div>
+    <div class="btn" id="btnQ3"><span class="qi">💣</span><small id="q3c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnQ2"><span class="qi">⚗️</span><small id="q2c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnTalk">Talk<small>F</small></div>
     <div class="btn" id="btnAttack">Attack<small>Space</small></div>
@@ -230,13 +242,15 @@
 
   <div id="bag" class="panel"><div class="pbox">
     <div class="phead"><span>Inventory</span><span id="bagGold">🪙 0</span><button id="bagClose">✕</button></div>
+    <div id="bagStats"></div>
+    <div id="bagEq"></div>
     <div id="bagGrid"></div>
     <div id="bagInfo"><div id="bagName">Select an item</div><div id="bagDesc">Tap an item to see what it does.</div><button id="bagUse" class="pbtn">Use</button></div>
   </div></div>
 
   <div id="shop" class="panel"><div class="pbox">
     <div class="phead"><span>Merchant</span><span id="shopGold">🪙 0</span><button id="shopClose">✕</button></div>
-    <div id="shopTabs"><button id="tabBuy" class="tab on">Buy</button><button id="tabSell" class="tab">Sell</button></div>
+    <div id="shopTabs"><button id="tabBuy" class="tab on">Items</button><button id="tabGear" class="tab">Gear</button><button id="tabSell" class="tab">Sell</button></div>
     <div id="shopList"></div>
   </div></div>
 
