@@ -5,6 +5,7 @@ import { buildVillage, villageModelCount, NPCS, VILLAGE_NAME } from './village.j
 import { buildDungeon, DUNGEON_MODEL_COUNT } from './dungeon.js';
 import { buildBossRoom, BOSS_MODEL_COUNT, BOSS_PLAY } from './boss.js';
 import { buildInterior, INTERIOR_HALF } from './interiors.js';
+import { buildRegionDecor } from './regiondecor.js';
 import { REGIONS, ENDING } from './regions.js';
 import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES, GEAR_FILES } from './items.js';
 
@@ -682,6 +683,23 @@ const SPAWNS = {
   'village:smithy': village.shops.find((s) => s.id === 'smithy').out,
   'village:store': village.shops.find((s) => s.id === 'store').out,
 };
+// Dekorasi dungeon sesuai wilayah
+const decorCache = {};
+let curDecor = null;
+let arenaColliders = null;
+function applyDecor(R) {
+  if (curDecor && curDecor.id !== R.id) arenaGroup.remove(curDecor.group);
+  if (!decorCache[R.id]) {
+    const d = buildRegionDecor(R.id);
+    d.group.traverse((o) => {
+      if (o.material) for (const mt of Array.isArray(o.material) ? o.material : [o.material]) mt.userData.noTint = true;
+    });
+    decorCache[R.id] = d;
+  }
+  curDecor = decorCache[R.id];
+  arenaGroup.add(curDecor.group);
+  arenaColliders = [...dungeon.colliders, ...curDecor.colliders];
+}
 const tmpTint = new THREE.Color();
 function tintGroup(group, hex, lightHex) {
   const seen = new Set();
@@ -704,6 +722,7 @@ function setZone(name, from = 'start') {
   const RG = curRegion();
   const z = name === 'arena' || name === 'boss' ? RG.env[name] : ZONES[name];
   if (name === 'arena') {
+    applyDecor(RG);
     tintGroup(arenaGroup, RG.tint.arena, RG.torch);
     relabel(bossPortalLabel, `${RG.boss.name}'s Lair`);
     if (from === 'village') toast(`${RG.place} — recommended level ${RG.recLv}+`, 3500);
@@ -2263,7 +2282,7 @@ function collidePos(pos, r, list) {
     }
   }
 }
-const colliderList = () => (zone === 'village' ? village.colliders : INDOOR.has(zone) ? interiors[zone].colliders : zone === 'boss' ? bossRoom.colliders : dungeon.colliders);
+const colliderList = () => (zone === 'village' ? village.colliders : INDOOR.has(zone) ? interiors[zone].colliders : zone === 'boss' ? bossRoom.colliders : arenaColliders || dungeon.colliders);
 
 // ---------- HUD ----------
 const camBtn = document.getElementById('btnCam');
@@ -2550,6 +2569,7 @@ function tick() {
     bossPortalLight.color.setHex(open ? 0x6bff7a : 0xff4a4a);
     bossPortalLight.intensity = 25 + Math.sin(clock.elapsedTime * 3.7) * 6;
     dungeon.update(clock.elapsedTime);
+    if (curDecor) curDecor.update(clock.elapsedTime, dt);
   } else {
     bossRoom.update(clock.elapsedTime, dt);
     updateBossFx(dt);
