@@ -10,6 +10,7 @@ import { buildCastleHall } from './castlehall.js';
 import { buildRegionDecor } from './regiondecor.js';
 import { buildArena } from './arenas.js';
 import { REGIONS, ENDING } from './regions.js';
+import { CARDS, TROPHIES, MAX_CARD_STACK, CARD_ALL_FILES } from './cards.js';
 import { ITEMS, SHOP, SHOP_GEAR, SLOTS, SLOT_ICON, XP, LOOT, LOOT_MODELS, LOOT_FILES, GEAR_FILES } from './items.js';
 
 const hpEl = document.getElementById('hp');
@@ -23,7 +24,7 @@ const loadStage = document.getElementById('loadStage');
 const loadTip = document.getElementById('loadTip');
 const BASE_FILES = 9;
 const NPC_FILES = new Set(NPCS.map((n) => n.model)).size + new Set(NPCS.flatMap((n) => Object.values(n.items || {})).filter((i) => i !== 'sword_1handed')).size + 1; // +1: kapak dua tangan boss
-const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT + LOOT_FILES.length + GEAR_FILES.length;
+const loadTotal = BASE_FILES + villageModelCount() + NPC_FILES + DUNGEON_MODEL_COUNT + BOSS_MODEL_COUNT + LOOT_FILES.length + GEAR_FILES.length + CARD_ALL_FILES.length;
 let loadDone = 0;
 let loadShown = 0;
 let loadFinished = false;
@@ -257,6 +258,20 @@ try {
 }
 
 interiors.store.fillShelves?.(lootModels);
+
+setStage('Shuffling the cards...');
+const cardModels = {};
+try {
+  const cardLoader = new GLTFLoader().setPath('assets/cards/');
+  await Promise.all(
+    CARD_ALL_FILES.map(async (f) => {
+      cardModels[f] = (await cardLoader.loadAsync(f + '.gltf')).scene;
+      bump();
+    })
+  );
+} catch (err) {
+  console.error(err); // kartu bersifat opsional: game tetap jalan tanpa gambar kartu
+}
 
 setStage('Sharpening the weapons...');
 const gearModels = {};
@@ -1669,6 +1684,7 @@ function killBoss(en) {
     return;
   }
   toast(R.boss.dead, 3500);
+  giveTrophy(R.id);
   // pecahan kristal jatuh dan melayang menunggu diambil
   const g = new THREE.Group();
   const x = en.root.position.x;
@@ -1834,6 +1850,16 @@ const xpNeed = (L) => 30 + 20 * L + 5 * L * L;
 state.atk = 1;
 state.def = 0;
 state.crit = 0.05;
+// ---------- Kartu: bonus permanen dari kartu level-up dan piala boss ----------
+function cardStats() {
+  const s = { atk: 0, def: 0, hp: 0, spd: 0, crit: 0, mp: 0, gold: 0, xp: 0 };
+  const add = (c, n) => {
+    for (const k in s) s[k] += (c[k] || 0) * n;
+  };
+  for (const [id, n] of Object.entries(save.cards || {})) if (CARDS[id]) add(CARDS[id], n);
+  for (const id of save.trophies || []) if (TROPHIES[id]) add(TROPHIES[id], 1);
+  return s;
+}
 function gearStats() {
   const s = { atk: 0, def: 0, hp: 0, spd: 0, crit: 0 };
   for (const id of Object.values(save.equip)) {
@@ -1845,12 +1871,13 @@ function gearStats() {
 function recalcStats() {
   const g = gearStats();
   const L = save.lvl;
-  state.atk = 1 + g.atk + 0.08 * (L - 1);
-  state.def = g.def + (L - 1);
-  state.crit = 0.05 + g.crit;
-  state.maxHp = 100 + 15 * (L - 1) + g.hp;
-  state.speed = 6 * (1 + g.spd);
-  state.maxMp = 40 + 6 * L;
+  const c = cardStats();
+  state.atk = 1 + g.atk + c.atk + 0.08 * (L - 1);
+  state.def = g.def + c.def + (L - 1);
+  state.crit = 0.05 + g.crit + c.crit;
+  state.maxHp = 100 + 15 * (L - 1) + g.hp + c.hp;
+  state.speed = 6 * (1 + g.spd + c.spd);
+  state.maxMp = 40 + 6 * L + c.mp;
   state.mp = Math.min(state.mp, state.maxMp);
   state.hp = Math.min(state.hp, state.maxHp);
 }
@@ -1954,12 +1981,14 @@ function makeIcons() {
 const iconHtml = (id) => (iconCache[id] ? `<img src="${iconCache[id]}" alt="">` : ITEMS[id].icon);
 function gainXp(n) {
   if (save.lvl >= MAX_LEVEL) return;
+  n = Math.round(n * (1 + cardStats().xp));
   save.xp += n;
   popText(`+${n} XP`, '#9fe8ff');
   let up = false;
   while (save.lvl < MAX_LEVEL && save.xp >= xpNeed(save.lvl)) {
     save.xp -= xpNeed(save.lvl);
     save.lvl++;
+    save.pick = (save.pick || 0) + 1;
     up = true;
   }
   if (up) {
@@ -2163,6 +2192,7 @@ function renderBag() {
     }
     bagGrid.appendChild(slot);
   }
+  renderBagCards();
 
   const eqSlot = bagSel && bagSel.startsWith('eq:') ? bagSel.slice(3) : null;
   const selId = eqSlot ? save.equip[eqSlot] : bagSel;
@@ -2209,8 +2239,153 @@ const tabSell = document.getElementById('tabSell');
 const tabGear = document.getElementById('tabGear');
 let shopTab = 'buy';
 let shopKind = 'items';
+// ----- Kartu 3D: ikon dirender sekali (jendela kartu dipotong dengan stencil) -----
+const cardIcons = {};
+function makeCardIcons() {
+  const files = [...new Set([...Object.values(CARDS), ...Object.values(TROPHIES)].map((c) => c.file))].filter((f) => cardModels[f] && !cardIcons[f]);
+  if (!files.length || !cardModels['0_Card_Front'] || !cardModels['0_Card_Mask']) return;
+  let r = null;
+  try {
+    r = new THREE.WebGLRenderer({ alpha: true, antialias: true, stencil: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(1);
+    r.setSize(168, 240);
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x9098a8, 1.8));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.6);
+    dl.position.set(2, 3, 6);
+    sc.add(dl);
+    const cam = new THREE.PerspectiveCamera(32, 168 / 240, 0.1, 50);
+    cam.position.set(0.55, 0.35, 9.5);
+    cam.lookAt(0, 0, -0.4);
+    const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+    for (const f of files) {
+      const group = new THREE.Group();
+      const mask = cardModels['0_Card_Mask'].clone();
+      mask.traverse((m) => {
+        if (m.isMesh) {
+          m.material = maskMat;
+          m.renderOrder = 0;
+        }
+      });
+      const art = cardModels[f].clone();
+      art.traverse((m) => {
+        if (!m.isMesh) return;
+        m.material = m.material.clone();
+        m.material.stencilWrite = true;
+        m.material.stencilRef = 1;
+        m.material.stencilFunc = THREE.EqualStencilFunc;
+        m.material.stencilFail = m.material.stencilZFail = m.material.stencilZPass = THREE.KeepStencilOp;
+        m.renderOrder = 1;
+      });
+      const frame = cardModels['0_Card_Front'].clone();
+      frame.traverse((m) => {
+        if (m.isMesh) m.renderOrder = 2;
+      });
+      group.add(mask, art, frame);
+      sc.add(group);
+      r.render(sc, cam);
+      cardIcons[f] = r.domElement.toDataURL('image/png');
+      sc.remove(group);
+    }
+  } catch (e) {
+    console.warn('card icons failed', e);
+  } finally {
+    if (r) {
+      r.dispose();
+      r.forceContextLoss?.();
+    }
+  }
+}
+const cardImg = (def) => (cardIcons[def.file] ? `<img src="${cardIcons[def.file]}" alt="">` : '<div class="cardFallback">🃏</div>');
+
+const cardPickEl = document.getElementById('cardPick');
+const cpRow = document.getElementById('cpRow');
+const cpInfo = document.getElementById('cpInfo');
+const cpTake = document.getElementById('cpTake');
+let cpOffer = [];
+let cpSel = null;
+function openCardPick() {
+  const pool = Object.keys(CARDS).filter((id) => (save.cards?.[id] || 0) < MAX_CARD_STACK);
+  if (!pool.length) {
+    save.pick = 0;
+    persist();
+    return;
+  }
+  makeCardIcons();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  cpOffer = pool.slice(0, 3);
+  cpSel = null;
+  cpRow.innerHTML = '';
+  for (const id of cpOffer) {
+    const c = CARDS[id];
+    const d = document.createElement('div');
+    d.className = 'cpCard';
+    d.innerHTML = `${cardImg(c)}<div class="nm">${c.name}</div><small>${c.desc}</small>${save.cards?.[id] ? `<small class="own">owned ×${save.cards[id]}</small>` : ''}`;
+    d.addEventListener('click', () => {
+      cpSel = id;
+      for (const el of cpRow.children) el.classList.remove('sel');
+      d.classList.add('sel');
+      cpTake.disabled = false;
+      cpInfo.textContent = `${c.name}: ${c.desc}`;
+    });
+    cpRow.appendChild(d);
+  }
+  cpInfo.textContent = save.pick > 1 ? `${save.pick} picks waiting. Tap a card to choose.` : 'Tap a card to choose.';
+  cpTake.disabled = true;
+  cardPickEl.classList.add('open');
+  updateUiOpen();
+}
+cpTake.addEventListener('click', () => {
+  if (!cpSel) return;
+  save.cards = save.cards || {};
+  save.cards[cpSel] = (save.cards[cpSel] || 0) + 1;
+  save.pick = Math.max(0, (save.pick || 0) - 1);
+  const c = CARDS[cpSel];
+  recalcStats();
+  persist();
+  popText(c.name + '!', '#ffe08a');
+  toast(`Card added: ${c.name} (${c.desc})`, 2600);
+  cardPickEl.classList.remove('open');
+  updateUiOpen();
+  if (bagEl.classList.contains('open')) renderBag();
+});
+function giveTrophy(regionId) {
+  save.trophies = save.trophies || [];
+  if (!TROPHIES[regionId] || save.trophies.includes(regionId)) return;
+  save.trophies.push(regionId);
+  recalcStats();
+  persist();
+  toast(`Trophy card earned: ${TROPHIES[regionId].name} (${TROPHIES[regionId].desc})`, 4200);
+}
+function renderBagCards() {
+  const box = document.getElementById('bagCards');
+  if (!box) return;
+  makeCardIcons();
+  const have = [];
+  for (const [id, n] of Object.entries(save.cards || {})) if (CARDS[id] && n > 0) have.push({ def: CARDS[id], n, label: `${CARDS[id].name} ×${n}` });
+  for (const id of save.trophies || []) if (TROPHIES[id]) have.push({ def: TROPHIES[id], n: 1, label: TROPHIES[id].name });
+  if (!have.length) {
+    box.innerHTML = '<div class="cardsHead">Cards</div><div class="cardsEmpty">Level up to choose cards. Defeat bosses to win trophy cards.</div>';
+    return;
+  }
+  const c = cardStats();
+  const parts = [];
+  if (c.atk) parts.push(`+${Math.round(c.atk * 100)}% damage`);
+  if (c.crit) parts.push(`+${Math.round(c.crit * 100)}% crit`);
+  if (c.def) parts.push(`+${c.def} defense`);
+  if (c.hp) parts.push(`+${c.hp} HP`);
+  if (c.mp) parts.push(`+${c.mp} MP`);
+  if (c.spd) parts.push(`+${Math.round(c.spd * 100)}% speed`);
+  if (c.gold) parts.push(`+${Math.round(c.gold * 100)}% gold`);
+  if (c.xp) parts.push(`+${Math.round(c.xp * 100)}% XP`);
+  box.innerHTML = '<div class="cardsHead">Cards</div><div class="cardsRow">' + have.map((h) => `<div class="cardMini" title="${h.label}">${cardImg(h.def)}${h.n > 1 ? `<b>${h.n}</b>` : ''}</div>`).join('') + `</div><div class="cardsSum">${parts.join(' · ')}</div>`;
+}
+
 const updateUiOpen = () =>
-  (uiOpen = bagEl.classList.contains('open') || shopEl.classList.contains('open') || choiceEl.classList.contains('open') || endingEl.classList.contains('open'));
+  (uiOpen = cardPickEl.classList.contains('open') || bagEl.classList.contains('open') || shopEl.classList.contains('open') || choiceEl.classList.contains('open') || endingEl.classList.contains('open'));
 
 function renderShop() {
   makeIcons();
@@ -2344,7 +2519,7 @@ function dropLoot(table, x, z) {
   for (const e of list) {
     if (Math.random() > e.chance) continue;
     let n = e.min ? e.min + Math.floor(Math.random() * (e.max - e.min + 1)) : 1;
-    if (e.id === 'gold') n = Math.round(n * R.mult.gold);
+    if (e.id === 'gold') n = Math.round(n * R.mult.gold * (1 + cardStats().gold));
     spawnPickup(e.id, n, x, z);
   }
 }
@@ -2609,6 +2784,7 @@ function updateHud() {
   mpTextEl.textContent = `${Math.floor(state.mp)} / ${state.maxMp}`;
   updateTargetHud();
   drawMini();
+  if ((save.pick || 0) > 0 && !uiOpen && !talk && state.hp > 0 && !cardPickEl.classList.contains('open')) openCardPick();
   deathEl.classList.toggle('show', state.hp <= 0);
   const near = (zone === 'village' || INDOOR.has(zone)) && !talk ? nearestNpc(3.2) : null;
   talkBtn.style.display = near ? 'flex' : 'none';
