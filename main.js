@@ -105,7 +105,7 @@ sun.shadow.camera.far = 80;
 sun.shadow.bias = -0.0005;
 scene.add(sun);
 scene.add(sun.target);
-const SUN_OFFSET = new THREE.Vector3(10, 20, 8);
+const SUN_OFFSET = new THREE.Vector3(17, 13, 10);
 
 // ---------- Kualitas grafis (Low / Medium / High), otomatis turun kalau FPS rendah ----------
 const QUALITY = [
@@ -379,6 +379,8 @@ const state = {
   slashT: 0,
   ringT: 0,
   kills: 0,
+  mp: 50,
+  maxMp: 50,
 };
 
 // Efek tebasan (busur di depan pemain, ke arah +Z)
@@ -701,7 +703,7 @@ dialogEl.addEventListener('pointerdown', (e) => {
 // ---------- Zona: desa (aman) dan arena dungeon ----------
 let zone = 'village';
 const ZONES = {
-  village: { bg: 0xcfe0f2, fogNear: 90, fogFar: 330, sky: 0xd0dcff, ground: 0x6a5a48, hemi: 1.15, sunColor: 0xffe0b5, sun: 1.7 },
+  village: { bg: 0xcfe0f2, fogNear: 90, fogFar: 330, sky: 0xe4e6ff, ground: 0x7a6040, hemi: 1.05, sunColor: 0xffcf94, sun: 2.1 },
   arena: { bg: 0x0d0e14, fogNear: 30, fogFar: 85, sky: 0x8fa0d8, ground: 0x2a1c14, hemi: 0.7, sunColor: 0x9fb4ff, sun: 0.6 },
   smithy: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xffe0c0, ground: 0x3a2a1a, hemi: 0.75, sunColor: 0xffd6a0, sun: 0.15 },
   store: { bg: 0x120c08, fogNear: 25, fogFar: 70, sky: 0xfff0d8, ground: 0x4a3a2a, hemi: 0.95, sunColor: 0xffd6a0, sun: 0.15 },
@@ -841,20 +843,23 @@ function setZone(name, from = 'start') {
   player.rotation.y = sp.rot;
   camYaw = sp.rot + Math.PI;
   camera.position.set(sp.x + Math.sin(camYaw) * 8, 6, sp.z + Math.cos(camYaw) * 8);
-  if (name === 'village' && state.hp > 0) state.hp = state.maxHp; // desa = tempat pulih
+  if (name === 'village' && state.hp > 0) {
+    state.hp = state.maxHp;
+    state.mp = state.maxMp;
+  } // desa = tempat pulih
   if (name === 'arena') for (let i = 0; i < 5; i++) spawnEnemy();
   if (name === 'boss') spawnBoss();
 }
 
 // ---------- Kamera orbit (di belakang karakter, bisa diputar dan di-zoom) ----------
 let camYaw = Math.PI; // kamera di belakang pemain yang awalnya menghadap +Z
-let camPitch = 0.5;
-let camDist = 9;
+let camPitch = 0.95;
+let camDist = 10;
 let camGoal = null; // { d, p } saat pindah preset kamera
 const CAM_MODES = [
-  { name: 'Close', d: 9, p: 0.5 },
-  { name: 'Far', d: 17, p: 0.8 },
-  { name: 'Overview', d: 28, p: 1.05 },
+  { name: 'Close', d: 10, p: 0.95 },
+  { name: 'Far', d: 18, p: 1.05 },
+  { name: 'Overview', d: 30, p: 1.2 },
 ];
 let camMode = 0;
 function setCamMode(i) {
@@ -1094,6 +1099,8 @@ for (const [id, sk] of Object.entries(SKILLS)) {
   });
 }
 
+const SKILL_MP = { s1: 20, s2: 12 };
+
 // Waktu damage dijadwalkan agar jatuh di tengah ayunan, bukan saat tombol ditekan
 const strikes = [];
 function schedule(delay, fn) {
@@ -1148,6 +1155,7 @@ function damageEnemy(en, dir, dmg = 1, force = 7) {
     if (zone === 'arena') questKill();
     en.deadTimer = 1.8;
     state.kills++;
+    state.mp = Math.min(state.maxMp, state.mp + 5);
     playOnce(en.actor, 'Death_A', { hold: true });
     dropLoot(en.type || 'minion', en.root.position.x, en.root.position.z);
   } else {
@@ -1223,6 +1231,13 @@ function useSkill(id) {
   if (!sk || state.hp <= 0 || sk.t > 0) return;
   if (state.dash) return;
   if (id !== 'dodge' && state.skillLock > 0) return;
+  if (id !== 'dodge') {
+    if (state.mp < SKILL_MP[id]) {
+      toast('Not enough MP', 900);
+      return;
+    }
+    state.mp -= SKILL_MP[id];
+  }
 
   if (id === 's1') {
     // Lompat: hantaman area di sekitar pemain
@@ -1833,6 +1848,8 @@ function recalcStats() {
   state.crit = 0.05 + g.crit;
   state.maxHp = 100 + 15 * (L - 1) + g.hp;
   state.speed = 6 * (1 + g.spd);
+  state.maxMp = 40 + 6 * L;
+  state.mp = Math.min(state.mp, state.maxMp);
   state.hp = Math.min(state.hp, state.maxHp);
 }
 // ----- Model senjata / perisai di tangan pemain + ikon 3D untuk inventory -----
@@ -1942,6 +1959,7 @@ function gainXp(n) {
   if (up) {
     recalcStats();
     state.hp = state.maxHp;
+    state.mp = state.maxMp;
     toast(`LEVEL UP!  You are now level ${save.lvl}`, 3200);
     popText('LEVEL UP!', '#ffe08a');
     if (bagEl.classList.contains('open')) renderBag();
@@ -2421,6 +2439,7 @@ document.getElementById('btnHelp').addEventListener('pointerdown', (e) => {
 });
 document.getElementById('btnRespawn').addEventListener('click', respawn);
 function respawn() {
+  state.mp = state.maxMp;
   if (state.hp > 0) return;
   state.hp = state.maxHp;
   state.invuln = 2;
@@ -2433,10 +2452,157 @@ function respawn() {
   setZone('village', 'start');
   toast('You wake up in the village...');
 }
+// ---------- AUTO, cincin target, bar target, minimap ----------
+let autoMode = false;
+const btnAutoEl = document.getElementById('btnAuto');
+btnAutoEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  autoMode = !autoMode;
+  btnAutoEl.classList.toggle('on', autoMode);
+  toast(autoMode ? 'Auto-attack ON' : 'Auto-attack OFF', 1100);
+});
+const mpEl = document.getElementById('mp');
+const mpTextEl = document.getElementById('mpText');
+const tgtEl = document.getElementById('tgt');
+const tgtNameEl = document.getElementById('tgtName');
+const tgtHpEl = document.getElementById('tgtHp');
+
+function makeRing(color) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.95, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false }));
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(0.78, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = fill.rotation.x = -Math.PI / 2;
+  g.add(ring, fill);
+  g.visible = false;
+  g.renderOrder = 5;
+  scene.add(g);
+  return g;
+}
+const targetRing = makeRing(0xff3a3a);
+const npcRing = makeRing(0x4dff7a);
+let curTarget = null;
+function updateTargeting(t) {
+  curTarget = zone === 'arena' || zone === 'boss' ? nearestEnemy(13) : null;
+  if (curTarget && state.hp > 0) {
+    const r = (curTarget.radius || 0.6) * 1.5 + 0.35;
+    targetRing.visible = true;
+    targetRing.position.set(curTarget.root.position.x, 0.06, curTarget.root.position.z);
+    targetRing.scale.setScalar(r * (1 + Math.sin(t * 6) * 0.05));
+  } else targetRing.visible = false;
+  const np = (zone === 'village' || INDOOR.has(zone)) && !talk && state.hp > 0 ? nearestNpc(3.2) : null;
+  if (np) {
+    npcRing.visible = true;
+    npcRing.position.set(np.root.position.x, np.root.position.y + 0.06, np.root.position.z);
+    npcRing.scale.setScalar(0.85 * (1 + Math.sin(t * 4) * 0.05));
+  } else npcRing.visible = false;
+}
+function updateTargetHud() {
+  const e = curTarget;
+  if (e && !e.boss && state.hp > 0) {
+    const R = curRegion();
+    tgtEl.style.display = 'block';
+    tgtNameEl.textContent = `${e.type === 'warrior' ? 'Skeleton Warrior' : 'Skeleton Minion'}  Lv ${R.recLv + (e.type === 'warrior' ? 1 : 0)}`;
+    tgtHpEl.style.width = Math.max(0, (e.hp / e.maxHp) * 100) + '%';
+  } else tgtEl.style.display = 'none';
+}
+
+const miniEl = document.getElementById('mini');
+const miniCtx = miniEl.getContext('2d');
+function drawMini() {
+  const W = miniEl.width;
+  const C = W / 2;
+  const range = zone === 'village' ? 34 : INDOOR.has(zone) ? 13 : zone === 'boss' ? 22 : 30;
+  const k = (C - 6) / range;
+  const fx = -Math.sin(camYaw);
+  const fz = -Math.cos(camYaw);
+  const px = player.position.x;
+  const pz = player.position.z;
+  const toS = (x, z) => {
+    const dx = x - px;
+    const dz = z - pz;
+    return [C + (-dx * fz + dz * fx) * k, C - (dx * fx + dz * fz) * k];
+  };
+  const g = miniCtx;
+  g.clearRect(0, 0, W, W);
+  g.save();
+  g.beginPath();
+  g.arc(C, C, C - 2, 0, Math.PI * 2);
+  g.clip();
+  g.fillStyle = zone === 'village' ? '#7a8d62' : '#3a3228';
+  g.fillRect(0, 0, W, W);
+  // bangunan / penghalang
+  g.fillStyle = zone === 'village' ? 'rgba(70,52,34,.85)' : 'rgba(150,130,100,.55)';
+  const cols = colliderList();
+  for (const c of cols) {
+    if (c.x1 < px - range - 2 || c.x0 > px + range + 2 || c.z1 < pz - range - 2 || c.z0 > pz + range + 2) continue;
+    if (c.x1 - c.x0 < 1.5 && c.z1 - c.z0 < 1.5) {
+      // pohon / batu kecil: titik
+      const [cx, cy] = toS((c.x0 + c.x1) / 2, (c.z0 + c.z1) / 2);
+      g.fillStyle = zone === 'village' ? 'rgba(40,90,45,.9)' : 'rgba(150,130,100,.55)';
+      g.fillRect(cx - 2, cy - 2, 4, 4);
+      continue;
+    }
+    g.fillStyle = zone === 'village' ? 'rgba(80,60,40,.9)' : 'rgba(150,130,100,.55)';
+    g.beginPath();
+    const pts = [toS(c.x0, c.z0), toS(c.x1, c.z0), toS(c.x1, c.z1), toS(c.x0, c.z1)];
+    g.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < 4; i++) g.lineTo(pts[i][0], pts[i][1]);
+    g.closePath();
+    g.fill();
+  }
+  const dot = (x, z, color, r) => {
+    const [sx, sy] = toS(x, z);
+    const d = Math.hypot(sx - C, sy - C);
+    let X = sx;
+    let Y = sy;
+    if (d > C - 8) {
+      X = C + ((sx - C) / d) * (C - 8);
+      Y = C + ((sy - C) / d) * (C - 8);
+    }
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(X, Y, r, 0, Math.PI * 2);
+    g.fill();
+  };
+  if (zone === 'village') {
+    dot(village.gate.x, village.gate.z, '#6fe8ff', 5);
+    dot(scenery.castleDoor.x, scenery.castleDoor.z, '#ffd24a', 5);
+    for (const s of village.shops) dot(s.x, s.z, '#ffffff', 4);
+  } else if (zone === 'arena') {
+    dot(ARENA_PORTAL.x, ARENA_PORTAL.z, '#6fe8ff', 5);
+    if (bossOpen()) dot(BOSS_PORTAL.x, BOSS_PORTAL.z, '#ff5ad8', 5);
+  }
+  for (const n of npcs) if (n.zone === zone) dot(n.root.position.x, n.root.position.z, '#5dff7e', 3);
+  for (const p of pickups) dot(p.x, p.z, '#ffe070', 2.5);
+  for (const e of enemies) if (!e.dead) dot(e.root.position.x, e.root.position.z, '#ff4a4a', e.boss ? 6 : 3.5);
+  g.restore();
+  // pemain (panah ke arah hadap)
+  g.save();
+  g.translate(C, C);
+  const ang = Math.atan2(Math.sin(player.rotation.y) * -fz + Math.cos(player.rotation.y) * fx, Math.sin(player.rotation.y) * fx + Math.cos(player.rotation.y) * fz);
+  g.rotate(ang);
+  g.fillStyle = '#ffffff';
+  g.strokeStyle = '#000';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(0, -9);
+  g.lineTo(6, 7);
+  g.lineTo(0, 3);
+  g.lineTo(-6, 7);
+  g.closePath();
+  g.stroke();
+  g.fill();
+  g.restore();
+}
+
 function updateHud() {
   hpEl.style.width = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
   hpEl.classList.toggle('low', state.hp > 0 && state.hp / state.maxHp < 0.3);
   hpTextEl.textContent = `${Math.ceil(state.hp)} / ${state.maxHp}`;
+  mpEl.style.width = Math.max(0, (state.mp / state.maxMp) * 100) + '%';
+  mpTextEl.textContent = `${Math.floor(state.mp)} / ${state.maxMp}`;
+  updateTargetHud();
+  drawMini();
   deathEl.classList.toggle('show', state.hp <= 0);
   const near = (zone === 'village' || INDOOR.has(zone)) && !talk ? nearestNpc(3.2) : null;
   talkBtn.style.display = near ? 'flex' : 'none';
@@ -2516,6 +2682,7 @@ function tick() {
   state.skillLock = Math.max(0, state.skillLock - dt);
   state.invuln = Math.max(0, state.invuln - dt);
   state.potionCd = Math.max(0, state.potionCd - dt);
+  if (alive) state.mp = Math.min(state.maxMp, state.mp + (3 + save.lvl * 0.2) * dt);
   state.buffs.speed = Math.max(0, state.buffs.speed - dt);
   state.buffs.power = Math.max(0, state.buffs.power - dt);
 
@@ -2530,7 +2697,19 @@ function tick() {
     }
 
     // Gerak
-    const { dir, mag } = readMove();
+    let { dir, mag } = readMove();
+    if (autoMode && mag === 0 && !state.dash && !uiOpen) {
+      const t = nearestEnemy(22);
+      if (t) {
+        const ax = t.root.position.x - player.position.x;
+        const az = t.root.position.z - player.position.z;
+        const ad = Math.hypot(ax, az) - (t.radius || 0);
+        if (ad > 1.8) {
+          dir = new THREE.Vector3(ax, 0, az).normalize();
+          mag = 1;
+        }
+      }
+    }
     const moving = mag > 0;
     if (state.dash) {
       player.position.addScaledVector(state.dash.dir, state.dash.speed * dt);
@@ -2555,6 +2734,13 @@ function tick() {
 
     // Serang
     if (keys.has('Space') || keys.has('KeyJ') || keys.has('Attack') || keys.has('AttackBtn')) attack();
+    if (autoMode && !uiOpen) {
+      const t = nearestEnemy(2.6);
+      if (t) {
+        attack();
+        if (SKILLS.s1.t <= 0 && state.mp >= SKILL_MP.s1 && enemies.filter((e) => !e.dead && e.root.position.distanceTo(player.position) < 3.4).length >= 2) useSkill('s1');
+      }
+    }
 
     if (playerActor.lock <= 0) play(playerActor, moving && !state.dash ? 'Running_A' : 'Idle_A');
   }
@@ -2706,6 +2892,7 @@ function tick() {
     bossExit.rotation.y += dt;
   }
   updatePickups(dt);
+  updateTargeting(clock.elapsedTime);
   sun.target.position.copy(player.position);
   sun.position.copy(player.position).add(SUN_OFFSET);
 

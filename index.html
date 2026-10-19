@@ -9,7 +9,7 @@
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   canvas { display: block; touch-action: none; }
 
-  #hud { position: fixed; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); color: #fff; font-size: 13px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #hud { position: fixed; top: max(12px, env(safe-area-inset-top)); left: calc(max(12px, env(safe-area-inset-left)) + 112px); color: #fff; font-size: 13px; pointer-events: none; text-shadow: 0 1px 2px #000; }
   #hpbar { position: relative; width: 200px; height: 18px; margin: 5px 0 4px; border-radius: 10px; overflow: hidden;
     background: linear-gradient(#1a0508, #2c0a10); border: 2px solid #f1d9a0; box-shadow: 0 0 0 1px #000, 0 2px 6px rgba(0,0,0,.6); }
   #hp { height: 100%; width: 100%; border-radius: 8px; transition: width .25s ease, filter .25s;
@@ -18,6 +18,22 @@
   @keyframes hpPulse { 50% { filter: brightness(1.6); } }
   #hpText { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
     letter-spacing: 1px; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+  #mpbar { position: relative; width: 200px; height: 13px; margin: 0 0 4px; border-radius: 8px; overflow: hidden;
+    background: linear-gradient(#050a1a, #0a1430); border: 2px solid #f1d9a0; box-shadow: 0 0 0 1px #000, 0 2px 6px rgba(0,0,0,.6); }
+  #mp { height: 100%; width: 100%; border-radius: 6px; transition: width .2s ease;
+    background: linear-gradient(#7fd8ff 0%, #1f8fe0 50%, #0d56a8 100%); box-shadow: inset 0 2px 0 rgba(255,255,255,.35); }
+  #mpText { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800;
+    letter-spacing: 1px; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+  #tgt { display: none; width: 200px; margin: 2px 0 4px; }
+  #tgtName { font-size: 11px; font-weight: 800; color: #ffd0d0; text-shadow: 0 1px 3px #000; }
+  #tgtTrack { height: 9px; border-radius: 5px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,150,150,.8); overflow: hidden; }
+  #tgtHp { height: 100%; width: 100%; background: linear-gradient(#ff8a8a, #c41f2a); transition: width .12s; }
+  #mini { position: fixed; top: max(12px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); width: 98px; height: 98px; border-radius: 50%;
+    border: 3px solid #f1d9a0; box-shadow: 0 0 0 1px #000, 0 3px 10px rgba(0,0,0,.7); background: #1a1a1a; pointer-events: none; z-index: 3; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(20,8,0,.55) 100%); }
+  #btnAuto { right: 196px; bottom: 40px; width: 50px; height: 50px; font-size: 12px; background: rgba(60,70,110,.7); }
+  #btnAuto.on { background: rgba(40,150,70,.85); box-shadow: 0 0 12px #5aff8a; }
   #info { font-size: 11px; opacity: .85; max-width: 62vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #help { display: none; opacity: .9; max-width: 260px; line-height: 1.4; font-size: 12px; background: rgba(10,12,24,.8);
     padding: 8px 10px; border-radius: 8px; margin-top: 6px; }
@@ -213,12 +229,15 @@
     <div id="loadTip"></div>
   </div>
 
+  <canvas id="mini" width="196" height="196"></canvas>
+  <div id="vignette"></div>
   <div id="bossBar"><div id="bossName">ROOT WARDEN</div><div id="bossTrack"><div id="bossHp"></div></div></div>
   <div id="toast"></div>
 
   <div id="hud">
-    <div style="font-size:20px;font-weight:700;letter-spacing:2px;">SHARDFALL</div>
     <div id="hpbar"><div id="hp"></div><div id="hpText"></div></div>
+    <div id="mpbar"><div id="mp"></div><div id="mpText"></div></div>
+    <div id="tgt"><div id="tgtName"></div><div id="tgtTrack"><div id="tgtHp"></div></div></div>
     <div id="xpRow"><span id="lvText">Lv 1</span><div id="xpbar"><div id="xp"></div></div></div>
     <div id="goldRow">🪙 <span id="gold">0</span></div>
     <div id="buffs"></div>
@@ -240,6 +259,7 @@
     <div class="btn" id="btnQ1"><span class="qi">🧪</span><small id="q1c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnQ3"><span class="qi">💣</span><small id="q3c">0</small><div class="cd"></div></div>
     <div class="btn" id="btnQ2"><span class="qi">⚗️</span><small id="q2c">0</small><div class="cd"></div></div>
+    <div class="btn" id="btnAuto">AUTO</div>
     <div class="btn" id="btnTalk">Talk<small>F</small></div>
     <div class="btn" id="btnAttack">Attack<small>Space</small></div>
   </div>

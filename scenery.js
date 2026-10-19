@@ -201,6 +201,97 @@ export function buildScenery(villageColliders, shops) {
   flowers.frustumCulled = false;
   group.add(flowers);
 
+  // ---------- Detail tanah: bercak tanah, rumput liar, kerikil, pot, tong, peti ----------
+  const dirtPts = [];
+  for (let i = 0; i < 26; i++) {
+    const p = insideSpot(0.3);
+    if (p) dirtPts.push([p[0], p[1], R(1.4, 3.4)]);
+  }
+  const dirt = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 14), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), dirtPts.length);
+  dirtPts.forEach(([x, z, s], i) => {
+    d.position.set(x, 0.012 + i * 0.0004, z);
+    d.rotation.set(-Math.PI / 2, 0, R(0, 6));
+    d.scale.set(s * R(1, 1.5), s, 1);
+    d.updateMatrix();
+    dirt.setMatrixAt(i, d.matrix);
+    dirt.setColorAt(i, new THREE.Color().setHSL(R(0.08, 0.11), 0.35, R(0.3, 0.4)));
+  });
+  dirt.frustumCulled = false;
+  group.add(dirt);
+  // rumput liar (kumpulan bilah)
+  const bladePts = [];
+  for (let i = 0; i < 260; i++) {
+    const p = insideSpot(0.25);
+    if (!p) continue;
+    const n = 4 + Math.floor(R(0, 4));
+    for (let k = 0; k < n; k++) bladePts.push([p[0] + R(-0.5, 0.5), p[1] + R(-0.5, 0.5)]);
+  }
+  const blades = new THREE.InstancedMesh(new THREE.ConeGeometry(0.1, 0.75, 4), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), bladePts.length);
+  bladePts.forEach(([x, z], i) => {
+    const h = R(0.6, 1.5);
+    d.position.set(x, 0.3 * h, z);
+    d.rotation.set(R(-0.35, 0.35), R(0, 6), R(-0.35, 0.35));
+    d.scale.set(1, h, 1);
+    d.updateMatrix();
+    blades.setMatrixAt(i, d.matrix);
+    blades.setColorAt(i, new THREE.Color().setHSL(R(0.18, 0.3), R(0.4, 0.55), R(0.28, 0.42)));
+  });
+  blades.frustumCulled = false;
+  group.add(blades);
+  // kerikil
+  const pebPts = [];
+  for (let i = 0; i < 160; i++) {
+    const p = insideSpot(0.3);
+    if (p) pebPts.push(p);
+  }
+  const pebbles = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), pebPts.length);
+  pebPts.forEach(([x, z], i) => {
+    const s = R(0.5, 1.6);
+    d.position.set(x, 0.05, z);
+    d.rotation.set(R(0, 3), R(0, 3), R(0, 3));
+    d.scale.set(s, s * 0.6, s);
+    d.updateMatrix();
+    pebbles.setMatrixAt(i, d.matrix);
+    pebbles.setColorAt(i, new THREE.Color().setHSL(R(0.07, 0.12), 0.08, R(0.4, 0.6)));
+  });
+  pebbles.frustumCulled = false;
+  group.add(pebbles);
+  // pot tanah liat, tong, dan peti kayu (menghalangi pemain)
+  const potGeo = new THREE.LatheGeometry([[0.0, 0], [0.32, 0], [0.45, 0.28], [0.5, 0.55], [0.34, 0.85], [0.28, 1.0], [0.36, 1.08]].map(([x, y]) => new THREE.Vector2(x, y)), 10);
+  const potMat = new THREE.MeshStandardMaterial({ color: 0xb4663a, roughness: 0.9 });
+  const barrelMat = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1 });
+  const crateMat = new THREE.MeshStandardMaterial({ color: 0x9a7448, roughness: 1 });
+  const props = [];
+  for (let i = 0; i < 26; i++) {
+    const p = insideSpot(0.75);
+    if (p) props.push([p[0], p[1], i % 3]);
+  }
+  for (const [x, z, kind] of props) {
+    // gugus kecil 1-3 benda
+    const n = 1 + Math.floor(R(0, 3));
+    for (let k = 0; k < n; k++) {
+      const ox = x + R(-0.9, 0.9) * (k ? 1 : 0);
+      const oz = z + R(-0.9, 0.9) * (k ? 1 : 0);
+      let m;
+      if (kind === 0) {
+        m = new THREE.Mesh(potGeo, potMat);
+        m.scale.setScalar(R(0.8, 1.3));
+      } else if (kind === 1) {
+        m = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 1.0, 10), barrelMat);
+        m.position.y = 0.5;
+      } else {
+        m = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), crateMat);
+        m.position.y = 0.4;
+        m.rotation.y = R(0, 1.5);
+      }
+      m.position.x = ox;
+      m.position.z = oz;
+      m.castShadow = true;
+      group.add(m);
+      colliders.push({ x0: ox - 0.5, x1: ox + 0.5, z0: oz - 0.5, z1: oz + 0.5 });
+    }
+  }
+
   // ---------- Batu ----------
   const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
