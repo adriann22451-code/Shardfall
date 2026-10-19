@@ -496,7 +496,8 @@ export async function buildVillage(onProgress) {
   fenceAlong(-E, -E, -E, E, Math.PI / 2); // barat
   fenceAlong(E, -E, E, E, Math.PI / 2); // timur
   fenceAlong(-E, GZ, E, GZ, 0, (x) => Math.abs(x) < 10.5); // utara, menyambung ke dinding gerbang
-  addRect(0, -E, E, 0.5);
+  addRect(-31.5, -E, 6.5, 0.5); // pagar belakang, celah gerbang kerajaan x -25..-15
+  addRect(11.5, -E, 26.5, 0.5);
   addRect(-E, 0, 0.5, E);
   addRect(E, 0, 0.5, E);
   addRect(-24.25, GZ, 13.75, 0.6);
