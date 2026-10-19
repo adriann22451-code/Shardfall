@@ -375,7 +375,7 @@ export function buildScenery(villageColliders, shops) {
   const hill = new THREE.Mesh(new THREE.SphereGeometry(44, 20, 10), new THREE.MeshStandardMaterial({ color: 0x4d6e3b, roughness: 1, flatShading: true }));
   hill.scale.y = 0.05;
   hill.position.y = -0.4;
-  castle.add(hill);
+  // bukit dihapus: pemain berjalan di tanah datar, bukit membuatnya tenggelam
   const BASE = 0;
   const castleStone = new THREE.MeshStandardMaterial({ map: noiseTex('#a2a29e', ['#8a8a86', '#b8b8b4', '#9a9690'], 4, 350), roughness: 1 });
   const roofRed = new THREE.MeshStandardMaterial({ color: 0x9a2a30, roughness: 0.9 });

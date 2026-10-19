@@ -621,7 +621,7 @@ for (const def of NPCS) {
   }
   const root = new THREE.Group();
   root.add(model);
-  root.position.set(def.x, 0, def.z);
+  root.position.set(def.x, def.y || 0, def.z);
   root.rotation.y = def.face;
   root.add(makeLabel(def.name));
   const nz = def.zone || 'village';

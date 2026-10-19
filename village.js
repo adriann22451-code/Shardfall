@@ -90,17 +90,17 @@ export const NPCS = [
     model: 'Barbarian', items: {},
     look: { headMesh: 'Barbarian_Head', crown: true, hair: 0xd8d8de, beard: 0xe6e6ea, scale: 1.05 },
     zone: 'castle',
-    x: 0, z: -9.6, face: 0,
+    x: 0, z: -9.6, y: 0.6, face: 0,
     lines: ['Welcome to Aurelia.'],
   },
   {
     id: 'rguard1', name: 'Royal Guard', model: 'Knight', items: { r: 'sword_1handed', l: 'shield_round' },
-    zone: 'castle', x: -2.6, z: -8.4, face: 0,
+    zone: 'castle', x: -2.6, z: -8.4, y: 0.6, face: 0,
     lines: ['Stand tall before the King.', 'No monster has ever crossed these walls. Not yet.'],
   },
   {
     id: 'rguard2', name: 'Royal Guard', model: 'Knight', items: { r: 'sword_1handed', l: 'shield_round' },
-    zone: 'castle', x: 2.6, z: -8.4, face: 0,
+    zone: 'castle', x: 2.6, z: -8.4, y: 0.6, face: 0,
     lines: ['The King listens to anyone who fights for the realm.'],
   },
   {
