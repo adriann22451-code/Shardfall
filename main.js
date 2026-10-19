@@ -256,6 +256,8 @@ try {
   throw err;
 }
 
+interiors.store.fillShelves?.(lootModels);
+
 setStage('Sharpening the weapons...');
 const gearModels = {};
 try {
@@ -1893,7 +1895,7 @@ function applyWeaponLook() {
 }
 const iconCache = {};
 function makeIcons() {
-  const ids = Object.keys(ITEMS).filter((id) => ITEMS[id].model && !iconCache[id]);
+  const ids = Object.keys(ITEMS).filter((id) => (ITEMS[id].model || lootModels[LOOT_MODELS[id]]) && !iconCache[id]);
   if (!ids.length) return;
   let r = null;
   try {
@@ -1907,12 +1909,16 @@ function makeIcons() {
     sc.add(dl);
     for (const id of ids) {
       const it = ITEMS[id];
-      const o = gearObject(it, 1);
+      const potion = !it.model && lootModels[LOOT_MODELS[id]];
+      const o = potion ? lootModels[LOOT_MODELS[id]].clone() : gearObject(it, 1);
       if (!o) continue;
       const wrap = new THREE.Group();
       wrap.add(o);
       const sz = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
-      if (it.slot === 'shield') {
+      if (potion) {
+        // botol: tegak saja, sedikit diputar agar label terlihat
+        o.rotation.y = 0.5;
+      } else if (it.slot === 'shield') {
         // sisi terlebar menghadap kamera
         if (sz.x <= sz.y && sz.x <= sz.z) o.rotation.y = Math.PI / 2;
         else if (sz.y <= sz.x && sz.y <= sz.z) o.rotation.x = Math.PI / 2;

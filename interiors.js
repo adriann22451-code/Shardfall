@@ -40,6 +40,7 @@ export function buildInterior(kind) {
   const group = new THREE.Group();
   const colliders = [];
   const flickers = [];
+  let fillShelves = null; // toko: ganti botol sederhana dengan model 3D
 
   const mats = {};
   const mat = (color, extra = {}) => {
@@ -201,11 +202,47 @@ export function buildInterior(kind) {
       }
     }
     group.add(bottles, necks);
+    const tableCyls = [];
     // Barang di meja
     for (const x of [-2.4, -1.2, 1.4, 2.6]) {
-      cyl(0.13, 0.13, 0.3, palette[Math.abs(Math.round(x * 3)) % palette.length], x, 1.25, -1.75, 10, { roughness: 0.3 });
+      tableCyls.push(cyl(0.13, 0.13, 0.3, palette[Math.abs(Math.round(x * 3)) % palette.length], x, 1.25, -1.75, 10, { roughness: 0.3 }));
     }
     box(0.5, 0.3, 0.4, 0xc9a24a, 0.1, 1.25, -1.6, { metalness: 0.4 }); // kotak uang
+    fillShelves = (models) => {
+      const list = Object.values(models).filter(Boolean);
+      if (!list.length) return;
+      bottles.visible = false;
+      necks.visible = false;
+      for (const c of tableCyls) c.visible = false;
+      const put = (src, x, y, z, h) => {
+        const o = src.clone();
+        const b = new THREE.Box3().setFromObject(o);
+        const sz = b.getSize(new THREE.Vector3());
+        const k = h / Math.max(sz.y, 0.001);
+        o.scale.setScalar(k);
+        const b2 = new THREE.Box3().setFromObject(o);
+        o.position.set(x - (b2.min.x + b2.max.x) / 2, y - b2.min.y, z - (b2.min.z + b2.max.z) / 2);
+        const wrap = new THREE.Group();
+        wrap.add(o);
+        wrap.rotation.y = Math.random() * 6.28;
+        wrap.traverse((m) => {
+          if (m.isMesh) m.castShadow = true;
+        });
+        wrap.position.set(x, 0, z);
+        o.position.x -= x;
+        o.position.z -= z;
+        group.add(wrap);
+      };
+      let n = 0;
+      for (let r = 0; r < shelfYs.length; r++) {
+        for (let i = 0; i < 14; i++) {
+          const x = -4.7 + i * (9.4 / 13);
+          put(list[(i + r * 2) % list.length], x, shelfYs[r] + 0.05, -ROOM + 0.3, 0.42 + ((i * 7 + r) % 3) * 0.05);
+          n++;
+        }
+      }
+      [-2.4, -1.2, 1.4, 2.6].forEach((x, i) => put(list[i % list.length], x, 1.1, -1.75, 0.45));
+    };
     // Karpet
     const rug = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 5.2), new THREE.MeshStandardMaterial({ color: 0x7a2530, roughness: 1 }));
     rug.rotation.x = -Math.PI / 2;
@@ -242,6 +279,7 @@ export function buildInterior(kind) {
   return {
     group,
     colliders,
+    fillShelves,
     exit: { x: 0, z: 4.9, r: 1.0 },
     spawn: { x: 0, z: 3.4, rot: Math.PI },
     update(t) {
